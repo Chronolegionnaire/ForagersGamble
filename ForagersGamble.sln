@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CakeBuild", "ForagersGamble\CakeBuild\CakeBuild.csproj", "{887CE436-4D37-44E6-98FF-E766C3F77E5C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForagersGamble", "ForagersGamble\ForagersGamble\ForagersGamble.csproj", "{69B8F644-9507-49C4-9278-C53062B8494C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{887CE436-4D37-44E6-98FF-E766C3F77E5C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{887CE436-4D37-44E6-98FF-E766C3F77E5C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{887CE436-4D37-44E6-98FF-E766C3F77E5C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{887CE436-4D37-44E6-98FF-E766C3F77E5C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{69B8F644-9507-49C4-9278-C53062B8494C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{69B8F644-9507-49C4-9278-C53062B8494C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{69B8F644-9507-49C4-9278-C53062B8494C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{69B8F644-9507-49C4-9278-C53062B8494C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

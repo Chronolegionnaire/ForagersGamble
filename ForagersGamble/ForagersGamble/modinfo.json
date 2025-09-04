@@ -1,0 +1,13 @@
+{
+    "type": "code",
+    "modid": "foragersgamble",
+    "name": "Foragers Gamble",
+    "authors": [
+        "Chronolegionnaire"
+    ],
+    "description": "Masks food safety and names until after eaten.",
+    "version": "1.0.0",
+    "dependencies": {
+        "game": ""
+    }
+}
