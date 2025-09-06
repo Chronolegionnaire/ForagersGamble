@@ -1,4 +1,5 @@
 using System;
+using ForagersGamble.Config;
 using HarmonyLib;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
@@ -45,7 +46,7 @@ namespace ForagersGamble.Patches
                 float satMul = GlobalConstants.FoodSpoilageSatLossMul((float)spoilLevel, slot.Itemstack, byEntity);
                 float hpMul  = GlobalConstants.FoodSpoilageHealthLossMul((float)spoilLevel, slot.Itemstack, byEntity);
 
-                const float nibbleFactor = 0.1f;
+                float nibbleFactor = ModConfig.Instance.Main.NibbleFactor;
                 byEntity.ReceiveSaturation(nutrition.Satiety * satMul * nibbleFactor, nutrition.FoodCategory);
                 IPlayer player = (byEntity is EntityPlayer ep) ? byEntity.World.PlayerByUid(ep.PlayerUID) : null;
                 slot.TakeOut(1);
