@@ -60,5 +60,18 @@ namespace ForagersGamble
         {
             return stack?.Collectible?.Code?.ToString() ?? "";
         }
+        
+        public static void ForgetAll(IPlayer player)
+        {
+            if (player?.Entity == null) return;
+
+            var wat = player.Entity.WatchedAttributes;
+            var root = wat.GetTreeAttribute(AttrRoot);
+            if (root == null) return;
+
+            root[KnownSet] = new StringArrayAttribute(System.Array.Empty<string>());
+            wat.SetAttribute(AttrRoot, root);
+            player.Entity.Attributes.MarkPathDirty(AttrRoot);
+        }
     }
 }

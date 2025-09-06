@@ -5,5 +5,10 @@
   "foragersgamble:unknown-protein": "Unknown Protein",
   "foragersgamble:unknown-grain": "Unknown Grain",
   "foragersgamble:unknown-dairy": "Unknown Dairy",
-  "foragersgamble:unknown-food": "Unknown Food"
+  "foragersgamble:unknown-food": "Unknown Food",
+  "foragersgamble:unknown-berrybush": "Unknown Berry Bush",
+  "foragersgamble:unknown-fruittree": "Unknown Fruit Tree",
+  "foragersgamble:unknown-plant": "Unknown Plant",
+  "foragersgamble:unknown-herb": "Unknown Herb",
+  "foragersgamble:unknown-crop": "Unknown Crop"
 }
