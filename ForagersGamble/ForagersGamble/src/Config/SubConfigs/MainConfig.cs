@@ -20,4 +20,12 @@ public class MainConfig
     [Category("Main")]
     [DefaultValue(true)]
     public bool ForgetOnDeath { get; set; } = true;
+    
+    [Category("Main")]
+    [DefaultValue(true)]
+    public bool HideNutritionInfo { get; set; } = true;
+
+    [Category("Main")]
+    [DefaultValue(true)]
+    public bool HideCraftingInfo { get; set; } = true;
 }
