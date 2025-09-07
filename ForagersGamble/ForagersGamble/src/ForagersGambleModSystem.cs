@@ -1,7 +1,11 @@
 ﻿
+using System.Collections.Generic;
+using ForagersGamble.Behaviors;
 using ForagersGamble.Config;
 using HarmonyLib;
+using Newtonsoft.Json.Linq;
 using Vintagestory.API.Common;
+using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 
 namespace ForagersGamble;
@@ -22,11 +26,36 @@ public class ForagersGambleModSystem : ModSystem
 			harmony.PatchAllUncategorized();
 		}
 	}
+	public override void Start(ICoreAPI api)
+	{
+		base.Start(api);
+		api.RegisterEntityBehaviorClass("fgDelayedPoison", typeof(EntityBehaviorDelayedPoison));
+	}
 	public override void AssetsFinalize(ICoreAPI api)
 	{
 		base.AssetsFinalize(api);
 		var idx = PlantKnowledgeIndex.Build(api);
 		PlantKnowledgeIndex.Put(api, idx);
+		if (api.Side == EnumAppSide.Client) return;
+
+		if (Config.ModConfig.Instance.Main.PoisonOnset)
+		{
+			var playerEntity = api.World.GetEntityType(new AssetLocation("game", "player"));
+
+			var fgBehaviors = new List<JsonObject>(1)
+			{
+				new(new JObject { ["code"] = "fgDelayedPoison" })
+			};
+
+			playerEntity.Server.BehaviorsAsJsonObj = [
+				..playerEntity.Server.BehaviorsAsJsonObj,
+				..fgBehaviors
+			];
+			playerEntity.Client.BehaviorsAsJsonObj = [
+				..playerEntity.Client.BehaviorsAsJsonObj,
+				..fgBehaviors
+			];
+		}
 	}
 	public override void StartServerSide(ICoreServerAPI sapi)
 	{
@@ -34,6 +63,8 @@ public class ForagersGambleModSystem : ModSystem
 
 		sapi.Event.PlayerDeath += (player, damageSource) =>
 		{
+			var beh = player?.Entity?.GetBehavior<EntityBehaviorDelayedPoison>();
+			beh?.ClearAll();
 			if (ModConfig.Instance?.Main?.ForgetOnDeath == true)
 			{
 				Knowledge.ForgetAll(player);

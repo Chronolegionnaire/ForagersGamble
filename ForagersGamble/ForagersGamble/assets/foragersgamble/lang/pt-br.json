@@ -1,0 +1,21 @@
+{
+  "foragersgamble:unknown-mushroom": "Cogumelo desconhecido",
+  "foragersgamble:unknown-fruit": "Fruta desconhecida",
+  "foragersgamble:unknown-vegetable": "Legume desconhecido",
+  "foragersgamble:unknown-protein": "Proteína desconhecida",
+  "foragersgamble:unknown-grain": "Grãos desconhecidos",
+  "foragersgamble:unknown-dairy": "Laticínio desconhecido",
+  "foragersgamble:unknown-food": "Comida desconhecida",
+  "foragersgamble:unknown-berrybush": "Arbusto desconhecido",
+  "foragersgamble:unknown-fruittree": "Árvore frutífera desconhecida",
+  "foragersgamble:unknown-plant": "Planta desconhecida",
+  "foragersgamble:unknown-herb": "Erva desconhecida",
+  "foragersgamble:unknown-crop": "Cultivo desconhecido",
+  "foragersgamble:poison.warn.lt1": "Você sente uma dor aguda no estômago.",
+  "foragersgamble:poison.warn.1to5": "Uma dor insuportável consome seu corpo.",
+  "foragersgamble:poison.warn.5to10": "As toxinas estão devastando seu organismo.",
+  "foragersgamble:poison.warn.10to14": "Uma onda ardente de náusea percorre você.",
+  "foragersgamble:poison.warn.15to49": "Sua visão se estreita enquanto o veneno toma conta.",
+  "foragersgamble:poison.warn.50plus": "Seu corpo entra em convulsão — o veneno é avassalador.",
+  "foragersgamble:poison.warn.deadjim": "Ele está morto, Jim."
+}

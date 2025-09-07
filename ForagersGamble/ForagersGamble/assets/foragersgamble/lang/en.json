@@ -10,5 +10,12 @@
   "foragersgamble:unknown-fruittree": "Unknown Fruit Tree",
   "foragersgamble:unknown-plant": "Unknown Plant",
   "foragersgamble:unknown-herb": "Unknown Herb",
-  "foragersgamble:unknown-crop": "Unknown Crop"
+  "foragersgamble:unknown-crop": "Unknown Crop",
+  "foragersgamble:poison.warn.lt1":   "You feel a sharp pain in your stomach.",
+  "foragersgamble:poison.warn.1to5":  "An unbearable pain wracks your system.",
+  "foragersgamble:poison.warn.5to10": "Toxins wreak havoc on your system.",
+  "foragersgamble:poison.warn.10to14":"A searing wave of nausea surges through you.",
+  "foragersgamble:poison.warn.15to49":"Your vision tunnels as the poison overtakes you.",
+  "foragersgamble:poison.warn.50plus":"Your body seizes—the poison is overwhelming.",
+  "foragersgamble:poison.warn.deadjim":"He's dead, Jim."
 }

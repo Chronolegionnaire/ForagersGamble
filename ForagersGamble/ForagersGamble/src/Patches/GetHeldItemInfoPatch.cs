@@ -40,7 +40,8 @@ namespace ForagersGamble.Patches
         public static float FoodHealthMulIfKnown(float spoil, ItemStack stack, EntityAgent agent)
         {
             float vanilla = GlobalConstants.FoodSpoilageHealthLossMul(spoil, stack, agent);
-            return HideNutrition(agent, stack) ? 0f : vanilla;
+            if (!InSurvival(agent)) return vanilla;
+            return Knowledge.IsHealthKnown(agent, stack) ? vanilla : 0f;
         }
 
         public static float FoodSatMulIfKnown(float spoil, ItemStack stack, EntityAgent agent)
