@@ -1,6 +1,7 @@
 using System;
 using ForagersGamble;
 using ForagersGamble.Behaviors;
+using ForagersGamble.Compat;
 using ForagersGamble.Config;
 using HarmonyLib;
 using Vintagestory.API.Common;
@@ -60,6 +61,14 @@ namespace ForagersGamble.Patches
                 float nibbleFactor = ModConfig.Instance.Main.NibbleFactor;
 
                 byEntity.ReceiveSaturation(nutrition.Satiety * satMul * nibbleFactor, nutrition.FoodCategory);
+                try
+                {
+                    if (byEntity is EntityPlayer && byEntity.World?.Api?.Side == EnumAppSide.Server)
+                    {
+                        HodCompat.TryApplyHydration(byEntity, slot.Itemstack, nibbleFactor);
+                    }
+                }
+                catch { }
                 IPlayer player = (byEntity is EntityPlayer ep) ? byEntity.World.PlayerByUid(ep.PlayerUID) : null;
                 slot.TakeOut(1);
                 if (nutrition.EatenStack != null)
