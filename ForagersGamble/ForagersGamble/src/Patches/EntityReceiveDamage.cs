@@ -23,11 +23,18 @@ namespace ForagersGamble.Patches
                 if (damageSource.Source != EnumDamageSource.Internal || damageSource.Type != EnumDamageType.Poison)
                     return true;
 
-                string itemKey = entity.WatchedAttributes?.GetString("FG.LastEatItemKey", null);
+                var wat  = entity.WatchedAttributes;
+                var root = wat?.GetTreeAttribute(NibbleKeys.AttrRoot);
+                bool wasNibble = root?.GetBool(NibbleKeys.NibbleIntent, false) ?? false;
+                string itemKey = wat?.GetString(NibbleKeys.LastEatItemKey, null);
                 if (string.IsNullOrEmpty(itemKey)) return true;
 
                 float durationSec = (float)damageSource.Duration.TotalSeconds;
                 int   ticks       = damageSource.TicksPerDuration;
+                if (wasNibble)
+                {
+                    damage *= ModConfig.Instance.Main.NibbleFactor;
+                }
 
                 var beh = entity.GetBehavior<EntityBehaviorDelayedPoison>();
                 if (beh != null)
