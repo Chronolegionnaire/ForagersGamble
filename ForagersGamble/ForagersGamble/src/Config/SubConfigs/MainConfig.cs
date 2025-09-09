@@ -68,7 +68,12 @@ namespace ForagersGamble.Config.SubConfigs
         [Range(-1, 100000)]
         [DefaultValue(100f)]
         public float InstantDeathThreshhold { get; set; } = 30f;
-
+        
+        [Category("Main")]
+        [Display(Name = "Show what caused poison in damage text.")]
+        [DefaultValue(true)]
+        public bool ShowFoodInWarning { get; set; } = true;
+        
         [Category("Poison")]
         [Display(Name = "Easter Egg Chance (≥50 dmg)", Description = "Chance (0-1) that 50+ damage uses the \"He's dead, Jim.\" line.")]
         [Range(0, 1)]

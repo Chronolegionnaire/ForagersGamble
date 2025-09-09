@@ -100,7 +100,7 @@ namespace ForagersGamble.Behaviors
 
             try
             {
-                SendSeverityWarning(total);
+                SendInstantThresholdWarning(total);
                 entity.ReceiveDamage(ds, total);
             }
             finally
@@ -179,7 +179,7 @@ namespace ForagersGamble.Behaviors
                     ds.Duration = TimeSpan.FromSeconds(p.DurationSec.Value);
                     ds.TicksPerDuration = p.Ticks.Value;
                 }
-                SendSeverityWarning(p.Damage);
+                SendSeverityWarning(p.Damage, p.ItemKey);
 
                 entity.ReceiveDamage(ds, p.Damage);
 
@@ -240,7 +240,7 @@ namespace ForagersGamble.Behaviors
             maxH = GameMath.Clamp(Math.Max(minH, maxH), 0f, 240f);
         }
 
-        private void SendSeverityWarning(float damage)
+        private void SendSeverityWarning(float damage, string itemKey = null)
         {
             if (entity.World.Side != EnumAppSide.Server) return;
             if (entity is not EntityPlayer ep) return;
@@ -254,7 +254,9 @@ namespace ForagersGamble.Behaviors
                 return;
             }
 
-            string key =
+            bool showFood = mc.ShowFoodInWarning;
+
+            string baseKey =
                 (damage < 1f)  ? "foragersgamble:poison.warn.lt1"   :
                 (damage < 5f)  ? "foragersgamble:poison.warn.1to5"  :
                 (damage < 10f) ? "foragersgamble:poison.warn.5to10" :
@@ -262,7 +264,51 @@ namespace ForagersGamble.Behaviors
                 (damage < 50f) ? "foragersgamble:poison.warn.15to49":
                 "foragersgamble:poison.warn.50plus";
 
-            sp.SendIngameError("poison", Lang.Get(key));
+            string key = showFood ? baseKey : (baseKey + ".plain");
+
+            if (showFood)
+            {
+                string foodName = ResolveItemName(itemKey);
+                sp.SendIngameError("poison", Lang.Get(key, foodName));
+            }
+            else
+            {
+                sp.SendIngameError("poison", Lang.Get(key));
+            }
+
+        }
+        
+        private void SendInstantThresholdWarning(float totalDamage)
+        {
+            if (entity.World.Side != EnumAppSide.Server) return;
+            if (entity is not EntityPlayer ep) return;
+            if (ep.Player is not IServerPlayer sp) return;
+
+            sp.SendIngameError("poison", Lang.Get("foragersgamble:poison.warn.instant"));
+        }
+        private string ResolveItemName(string itemKey)
+        {
+            if (string.IsNullOrEmpty(itemKey))
+                return Lang.Get("foragersgamble:unknown-food");
+
+            try
+            {
+                var loc = AssetLocation.Create(itemKey);
+                CollectibleObject col =
+                    entity.World.GetItem(loc) ??
+                    (entity.World.GetBlock(loc) as CollectibleObject);
+
+                if (col != null)
+                {
+                    var stack = new ItemStack(col);
+                    return col.GetHeldItemName(stack);
+                }
+                return Lang.Get(itemKey);
+            }
+            catch
+            {
+                return Lang.Get("foragersgamble:unknown-food");
+            }
         }
 
         private void Save()
