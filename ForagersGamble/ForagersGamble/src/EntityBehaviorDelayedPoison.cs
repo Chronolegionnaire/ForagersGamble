@@ -37,14 +37,12 @@ namespace ForagersGamble.Behaviors
         {
             base.Initialize(properties, attributes);
             Load();
-            CombineQueueGroups();   // keep persisted data normalized
+            CombineQueueGroups();
             Save();
         }
 
         private static string GroupKey(PendingPoison p)
         {
-            // "Same" = same ItemKey. If you ever want to group by poison class instead,
-            // you could return DeterminePoisonClass(p.Damage, p.ItemKey) here.
             return p.ItemKey ?? "";
         }
 
@@ -52,7 +50,6 @@ namespace ForagersGamble.Behaviors
         {
             if (queue.Count <= 1) return;
 
-            // Accumulate per group, choosing earliest trigger time
             var byKey = new Dictionary<string, PendingPoison>();
             for (int i = 0; i < queue.Count; i++)
             {
@@ -61,7 +58,6 @@ namespace ForagersGamble.Behaviors
 
                 if (!byKey.TryGetValue(key, out var acc))
                 {
-                    // Start a new accumulator (copy to avoid mutating the original while iterating)
                     byKey[key] = new PendingPoison
                     {
                         Damage         = cur.Damage,
@@ -73,15 +69,11 @@ namespace ForagersGamble.Behaviors
                 }
                 else
                 {
-                    // Combine damage
                     acc.Damage += cur.Damage;
 
-                    // Keep the earliest trigger time
                     if (cur.TriggerAtHours < acc.TriggerAtHours)
                         acc.TriggerAtHours = cur.TriggerAtHours;
 
-                    // If durations/ticks differ, pick a sensible merge policy.
-                    // Here we take the max (longer/denser DOT) so nothing is lost.
                     if (cur.Ticks.HasValue)
                         acc.Ticks = Math.Max(acc.Ticks ?? 0, cur.Ticks.Value);
 
@@ -90,7 +82,6 @@ namespace ForagersGamble.Behaviors
                 }
             }
 
-            // Replace queue with combined entries
             queue.Clear();
             queue.AddRange(byKey.Values);
         }
@@ -213,7 +204,6 @@ namespace ForagersGamble.Behaviors
             if (!Config.ModConfig.Instance.Main.PoisonOnset) return;
             if (queue.Count == 0) return;
 
-            // NEW: keep queue normalized
             CombineQueueGroups();
             Save();
 

@@ -186,7 +186,6 @@ namespace ForagersGamble.Patches
                     var root = wat?.GetTreeAttribute(NibbleKeys.AttrRoot);
                     bool wasNibble = root?.GetBool(NibbleKeys.NibbleIntent, false) ?? false;
 
-                    // Read the captured key; treat empty as missing so we can fall back
                     string key = wat?.GetString(NibbleKeys.LastEatItemKey, null);
                     if (string.IsNullOrEmpty(key))
                     {
@@ -224,7 +223,6 @@ namespace ForagersGamble.Patches
             }
             finally
             {
-                // Always clear
                 try
                 {
                     var wat = byEntity?.WatchedAttributes;
@@ -235,7 +233,6 @@ namespace ForagersGamble.Patches
                         wat.SetAttribute(NibbleKeys.AttrRoot, root);
                     }
 
-                    // Clear the cached key
                     wat?.SetString(NibbleKeys.LastEatItemKey, null);
 
                     byEntity?.Attributes?.MarkPathDirty(NibbleKeys.AttrRoot);
