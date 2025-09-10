@@ -13,10 +13,11 @@ namespace ForagersGamble.Behaviors
     {
         private const string AttrRoot = "foragersGamble.delayedPoison";
         private const string ListKey  = "queue";
-        private const float CheckIntervalSec = 10f;
+        private const float CheckIntervalSec = 20f;
         private float checkTimerSec = 0f;
         private bool _applyingInstant;
         private static readonly string FlagInstant = "FG.InstantApply";
+        private bool _applyingDelayed;
         private class PendingPoison
         {
             public float Damage;
@@ -36,6 +37,62 @@ namespace ForagersGamble.Behaviors
         {
             base.Initialize(properties, attributes);
             Load();
+            CombineQueueGroups();   // keep persisted data normalized
+            Save();
+        }
+
+        private static string GroupKey(PendingPoison p)
+        {
+            // "Same" = same ItemKey. If you ever want to group by poison class instead,
+            // you could return DeterminePoisonClass(p.Damage, p.ItemKey) here.
+            return p.ItemKey ?? "";
+        }
+
+        private void CombineQueueGroups()
+        {
+            if (queue.Count <= 1) return;
+
+            // Accumulate per group, choosing earliest trigger time
+            var byKey = new Dictionary<string, PendingPoison>();
+            for (int i = 0; i < queue.Count; i++)
+            {
+                var cur = queue[i];
+                string key = GroupKey(cur);
+
+                if (!byKey.TryGetValue(key, out var acc))
+                {
+                    // Start a new accumulator (copy to avoid mutating the original while iterating)
+                    byKey[key] = new PendingPoison
+                    {
+                        Damage         = cur.Damage,
+                        ItemKey        = cur.ItemKey,
+                        TriggerAtHours = cur.TriggerAtHours,
+                        Ticks          = cur.Ticks,
+                        DurationSec    = cur.DurationSec
+                    };
+                }
+                else
+                {
+                    // Combine damage
+                    acc.Damage += cur.Damage;
+
+                    // Keep the earliest trigger time
+                    if (cur.TriggerAtHours < acc.TriggerAtHours)
+                        acc.TriggerAtHours = cur.TriggerAtHours;
+
+                    // If durations/ticks differ, pick a sensible merge policy.
+                    // Here we take the max (longer/denser DOT) so nothing is lost.
+                    if (cur.Ticks.HasValue)
+                        acc.Ticks = Math.Max(acc.Ticks ?? 0, cur.Ticks.Value);
+
+                    if (cur.DurationSec.HasValue)
+                        acc.DurationSec = Math.Max(acc.DurationSec ?? 0f, cur.DurationSec.Value);
+                }
+            }
+
+            // Replace queue with combined entries
+            queue.Clear();
+            queue.AddRange(byKey.Values);
         }
 
         private float TotalQueuedDamage()
@@ -116,7 +173,7 @@ namespace ForagersGamble.Behaviors
 
         public override void OnEntityReceiveDamage(DamageSource damageSource, ref float damage)
         {
-            if (_applyingInstant) return;
+            if (_applyingInstant || _applyingDelayed) return;
 
             if (entity.World.Side != EnumAppSide.Server) return;
             if (!Config.ModConfig.Instance.Main.PoisonOnset) return;
@@ -156,6 +213,10 @@ namespace ForagersGamble.Behaviors
             if (!Config.ModConfig.Instance.Main.PoisonOnset) return;
             if (queue.Count == 0) return;
 
+            // NEW: keep queue normalized
+            CombineQueueGroups();
+            Save();
+
             TryApplyInstantIfOverThreshold();
             if (queue.Count == 0) return;
 
@@ -164,13 +225,12 @@ namespace ForagersGamble.Behaviors
             for (int i = queue.Count - 1; i >= 0; i--)
             {
                 var p = queue[i];
-                double remHours = p.TriggerAtHours - nowHours;
-                if (remHours > 0) continue;
+                if (p.TriggerAtHours - nowHours > 0) continue;
 
                 var ds = new DamageSource
                 {
                     Source = EnumDamageSource.Internal,
-                    Type   = EnumDamageType.Poison,
+                    Type = EnumDamageType.Poison,
                     DamageOverTimeTypeEnum = EnumDamageOverTimeEffectType.Poison,
                 };
 
@@ -179,9 +239,18 @@ namespace ForagersGamble.Behaviors
                     ds.Duration = TimeSpan.FromSeconds(p.DurationSec.Value);
                     ds.TicksPerDuration = p.Ticks.Value;
                 }
+
                 SendSeverityWarning(p.Damage, p.ItemKey);
 
-                entity.ReceiveDamage(ds, p.Damage);
+                _applyingDelayed = true;
+                try
+                {
+                    entity.ReceiveDamage(ds, p.Damage);
+                }
+                finally
+                {
+                    _applyingDelayed = false;
+                }
 
                 if (!string.IsNullOrEmpty(p.ItemKey))
                 {
@@ -190,6 +259,7 @@ namespace ForagersGamble.Behaviors
 
                 queue.RemoveAt(i);
                 Save();
+                break;
             }
         }
 
@@ -209,14 +279,15 @@ namespace ForagersGamble.Behaviors
 
             var pp = new PendingPoison
             {
-                Damage = damage,
-                ItemKey = itemKey,
+                Damage      = damage,
+                ItemKey     = itemKey,
                 TriggerAtHours = triggerAt,
                 DurationSec = durationSec > 0 ? durationSec : null,
-                Ticks = ticks > 0 ? ticks : null
+                Ticks       = ticks > 0 ? ticks : (int?)null
             };
 
             queue.Add(pp);
+            CombineQueueGroups();
             Save();
             TryApplyInstantIfOverThreshold();
         }

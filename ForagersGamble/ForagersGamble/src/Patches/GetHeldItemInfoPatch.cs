@@ -97,7 +97,7 @@ namespace ForagersGamble.Patches
 
         public static void ScrubTooltipIfHidden(ItemSlot inSlot, StringBuilder dsc, IWorldAccessor world)
         {
-            EntityAgent agent = (world.Side == EnumAppSide.Client) ? (world as IClientWorldAccessor)?.Player?.Entity : null;
+            var agent = world.Side == EnumAppSide.Client ? (world as IClientWorldAccessor)?.Player?.Entity : null;
             var stack = inSlot?.Itemstack;
             if (agent == null || stack == null) return;
 
@@ -105,10 +105,14 @@ namespace ForagersGamble.Patches
             {
                 RemoveLines(dsc, IsNutritionOrHydrationLine);
             }
-            if (HideCrafting(agent, stack))
+            if (IsFood(stack, world, agent) && HideCrafting(agent, stack))
             {
                 RemoveLines(dsc, IsCraftingTransformLine);
             }
+        }
+        static bool IsFood(ItemStack stack, IWorldAccessor world, EntityAgent agent)
+        {
+            return stack?.Collectible?.GetNutritionProperties(world, stack, agent as EntityPlayer) != null;
         }
 
         static bool IsCraftingTransformLine(string line)

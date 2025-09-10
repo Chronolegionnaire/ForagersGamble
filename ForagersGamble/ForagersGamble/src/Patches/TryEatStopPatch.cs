@@ -5,10 +5,17 @@ using ForagersGamble.Compat;
 using ForagersGamble.Config;
 using HarmonyLib;
 using Vintagestory.API.Common;
+using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 
 namespace ForagersGamble.Patches
 {
+    public static class NibbleKeys
+    {
+        public const string AttrRoot       = "foragersGamble";
+        public const string NibbleIntent   = "nibbleIntent";
+        public const string LastEatItemKey = "FG.LastEatItemKey";
+    }
     [HarmonyPatch(typeof(CollectibleObject), "tryEatStop",
         new Type[] { typeof(float), typeof(ItemSlot), typeof(EntityAgent) })]
     public static class Patch_CollectibleObject_TryEatStop_ScaleOnSneak
@@ -117,47 +124,127 @@ namespace ForagersGamble.Patches
             return code;
         }
     }
+
+    [HarmonyPatch(typeof(CollectibleObject), "tryEatStop",
+        new Type[] { typeof(float), typeof(ItemSlot), typeof(EntityAgent) })]
+    [HarmonyPriority(Priority.First)]
+    public static class Patch_CollectibleObject_TryEatStop_Capture
+    {
+        static void Prefix(float secondsUsed, ItemSlot slot, EntityAgent byEntity, CollectibleObject __instance)
+        {
+            try
+            {
+                if (byEntity == null) return;
+
+                var wat = byEntity.WatchedAttributes;
+                wat?.SetString(NibbleKeys.LastEatItemKey, null);
+                byEntity.Attributes?.MarkPathDirty(NibbleKeys.LastEatItemKey);
+
+                string key = null;
+
+                if (slot?.Itemstack != null)
+                    key = Knowledge.ItemKey(slot.Itemstack);
+
+                if (key == null && __instance != null)
+                {
+                    try { key = Knowledge.ItemKey(new ItemStack(__instance)); } catch { }
+                }
+
+                if (!string.IsNullOrEmpty(key))
+                {
+                    wat?.SetString(NibbleKeys.LastEatItemKey, key);
+                    byEntity.Attributes?.MarkPathDirty(NibbleKeys.LastEatItemKey);
+                }
+
+                bool wantNibble = (byEntity.Controls?.Sneak ?? false)
+                                  && (slot?.Itemstack != null)
+                                  && !Knowledge.IsKnown(byEntity, slot?.Itemstack);
+
+                var root = wat?.GetTreeAttribute(NibbleKeys.AttrRoot) ?? new TreeAttribute();
+                root.SetBool(NibbleKeys.NibbleIntent, wantNibble);
+                wat?.SetAttribute(NibbleKeys.AttrRoot, root);
+                byEntity.Attributes?.MarkPathDirty(NibbleKeys.AttrRoot);
+            }
+            catch { }
+        }
+    }
+
     [HarmonyPatch(typeof(CollectibleObject), "tryEatStop",
         new Type[] { typeof(float), typeof(ItemSlot), typeof(EntityAgent) })]
     [HarmonyPriority(Priority.First)]
     public static class Patch_CollectibleObject_TryEatStop_Knowledge
     {
-        static void Postfix(float secondsUsed, ItemSlot slot, EntityAgent byEntity)
+        static void Postfix(float secondsUsed, ItemSlot slot, EntityAgent byEntity, CollectibleObject __instance)
         {
             try
             {
-                if (!(byEntity?.World is IServerWorldAccessor)) return;
-                if (secondsUsed < 0.95f) return;
+                bool shouldProcess = byEntity?.World is IServerWorldAccessor && secondsUsed >= 0.95f;
 
-                var wat  = byEntity.WatchedAttributes;
-                var root = wat?.GetTreeAttribute(NibbleKeys.AttrRoot);
-                bool wasNibble = root?.GetBool(NibbleKeys.NibbleIntent, false) ?? false;
-                string key = wat?.GetString(NibbleKeys.LastEatItemKey, null)
-                             ?? Knowledge.ItemKey(slot?.Itemstack);
-                if (!string.IsNullOrEmpty(key))
+                if (shouldProcess)
                 {
-                    Knowledge.MarkKnown(byEntity, key);
-                }
-                if (wasNibble && slot?.Itemstack != null)
-                {
-                    float factor   = ModConfig.Instance.Main.NibbleFactor;
-                    float deltaMul = factor - 1f;
-                    if (Math.Abs(deltaMul) > 0f)
+                    var wat = byEntity.WatchedAttributes;
+                    var root = wat?.GetTreeAttribute(NibbleKeys.AttrRoot);
+                    bool wasNibble = root?.GetBool(NibbleKeys.NibbleIntent, false) ?? false;
+
+                    // Read the captured key; treat empty as missing so we can fall back
+                    string key = wat?.GetString(NibbleKeys.LastEatItemKey, null);
+                    if (string.IsNullOrEmpty(key))
                     {
-                        HodCompat.TryApplyHydration(byEntity, slot.Itemstack, deltaMul);
+                        key = slot?.Itemstack != null ? Knowledge.ItemKey(slot.Itemstack) : null;
+                        if (string.IsNullOrEmpty(key) && __instance != null)
+                        {
+                            try
+                            {
+                                key = Knowledge.ItemKey(new ItemStack(__instance));
+                            }
+                            catch
+                            {
+                            }
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(key))
+                    {
+                        Knowledge.MarkKnown(byEntity, key);
+                    }
+
+                    if (wasNibble && slot?.Itemstack != null)
+                    {
+                        float factor = ModConfig.Instance.Main.NibbleFactor;
+                        float deltaMul = factor - 1f;
+                        if (Math.Abs(deltaMul) > 0f)
+                        {
+                            HodCompat.TryApplyHydration(byEntity, slot.Itemstack, deltaMul);
+                        }
                     }
                 }
-                if (root != null)
-                {
-                    root.SetBool(NibbleKeys.NibbleIntent, false);
-                    wat.SetAttribute(NibbleKeys.AttrRoot, root);
-                }
-                wat?.SetString(NibbleKeys.LastEatItemKey, null);
-
-                byEntity.Attributes?.MarkPathDirty(NibbleKeys.AttrRoot);
-                byEntity.Attributes?.MarkPathDirty(NibbleKeys.LastEatItemKey);
             }
-            catch { }
+            catch
+            {
+            }
+            finally
+            {
+                // Always clear
+                try
+                {
+                    var wat = byEntity?.WatchedAttributes;
+                    var root = wat?.GetTreeAttribute(NibbleKeys.AttrRoot);
+                    if (root != null)
+                    {
+                        root.SetBool(NibbleKeys.NibbleIntent, false);
+                        wat.SetAttribute(NibbleKeys.AttrRoot, root);
+                    }
+
+                    // Clear the cached key
+                    wat?.SetString(NibbleKeys.LastEatItemKey, null);
+
+                    byEntity?.Attributes?.MarkPathDirty(NibbleKeys.AttrRoot);
+                    byEntity?.Attributes?.MarkPathDirty(NibbleKeys.LastEatItemKey);
+                }
+                catch
+                {
+                }
+            }
         }
     }
 }
