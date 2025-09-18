@@ -28,5 +28,54 @@
   
   "foragersgamble:poison.warn.instant": "Your veins burn as a surge of poison floods your body at once.",
 
-  "foragersgamble:poison.warn.deadjim":"He's dead, Jim."
+  "foragersgamble:poison.warn.deadjim":"He's dead, Jim.",
+
+  "foragersgamble:item-knowledgebook-normal-brickred": "Empty Brick Red Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-cherryred": "Empty Cherry Red Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-darkbeige": "Empty Dark Beige Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-darkgray": "Empty Dark Gray Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-darkgreen": "Empty Dark Green Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-darkolive": "Empty Dark Olive Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-gray": "Empty Gray Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-olive": "Empty Olive Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-orange": "Empty Orange Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-orangebrown": "Empty Orange-Brown Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-purple": "Empty Purple Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-purpleorange": "Empty Purple-Orange Forager's Journal",
+  "foragersgamble:item-knowledgebook-normal-teal": "Empty Teal Forager's Journal",
+
+  "foragersgamble:item-knowledgebook-aged-orangebrown": "Empty Aged Orange-Brown Forager's Journal",
+  "foragersgamble:item-knowledgebook-aged-orange": "Empty Aged Orange Forager's Journal",
+  "foragersgamble:item-knowledgebook-aged-darkgreen": "Empty Aged Dark Green Forager's Journal",
+  "foragersgamble:item-knowledgebook-aged-darkgray": "Empty Aged Dark Gray Forager's Journal",
+  "foragersgamble:item-knowledgebook-aged-cherryred": "Empty Aged Cherry Red Forager's Journal",
+  "foragersgamble:item-knowledgebook-aged-brickred": "Empty Aged Brick Red Forager's Journal",
+  "foragersgamble:item-knowledgebook-aged-darkolive": "Empty Aged Dark Olive Forager's Journal",
+  "foragersgamble:item-knowledgebook-aged-darkbeige": "Empty Aged Dark Beige Forager's Journal",
+  "foragersgamble:item-knowledgebook-aged-olive": "Empty Aged Olive Forager's Journal",
+  "foragersgamble:item-knowledgebook-aged-purpleorange": "Empty Aged Purple-Orange Forager's Journal",
+  "foragersgamble:item-knowledgebook-aged-gray": "Empty Aged Gray Forager's Journal",
+
+  "foragersgamble:item-knowledgebook-rotten-gray": "Empty Rotten Gray Forager's Journal",
+  "foragersgamble:item-knowledgebook-rotten-brown": "Empty Rotten Brown Forager's Journal",
+  "foragersgamble:item-knowledgebook-rotten-rust": "Empty Rotten Rust Forager's Journal",
+  "foragersgamble:item-knowledgebook-rotten-purple": "Empty Rotten Purple Forager's Journal",
+  "foragersgamble:item-knowledgebook-rotten-green": "Empty Rotten Green Forager's Journal",
+
+  "foragersgamble:kb.author.unknown": "Unknown author",
+
+  "foragersgamble:kb.title.format": "{0}'s Foraging Journal",
+
+  "foragersgamble:kb.tooltip.inscribedby": "Inscribed by {0}",
+  "foragersgamble:kb.tooltip.inscribedon": "Inscribed on {0}",
+  "foragersgamble:kb.tooltip.containsnotes": "Contains field notes ({0} entries)",
+  "foragersgamble:kb.tooltip.studyhint": "Right-click to study (consumes book)",
+  "foragersgamble:kb.tooltip.blank": "Blank journal",
+  "foragersgamble:kb.tooltip.inscribehint": "Right-click while holding a quill to inscribe and seal",
+  
+  "foragersgamble:kb.msg.cannotstudywithquill": "This journal has already been inscribed!",
+
+  "foragersgamble:kb.msg.needquill": "You need a quill in the other hand to inscribe this journal.",
+  "foragersgamble:kb.msg.inscribed": "You inscribe your field notes into the journal.",
+  "foragersgamble:kb.msg.studied": "You study the journal and recall forgotten tastes."
 }

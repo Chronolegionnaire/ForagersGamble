@@ -1,0 +1,10 @@
+{
+  "ingredientPattern": "B",
+  "ingredients": {
+    "B": { "type": "item", "code": "foragersgamble:knowledgebook-*", "name": "color" }
+  },
+  "width": 1,
+  "height": 1,
+  "shapeless": true,
+  "output": { "type": "item", "code": "game:book-{color}", "quantity": 1  }
+}

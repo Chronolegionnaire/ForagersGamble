@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using ForagersGamble.Behaviors;
 using ForagersGamble.Config;
+using ForagersGamble.KnowledgeBooks;
 using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using Vintagestory.API.Common;
@@ -30,6 +31,7 @@ public class ForagersGambleModSystem : ModSystem
 	{
 		base.Start(api);
 		api.RegisterEntityBehaviorClass("fgDelayedPoison", typeof(EntityBehaviorDelayedPoison));
+		api.RegisterItemClass("ItemKnowledgeBook", typeof(ItemKnowledgeBook));
 	}
 	public override void AssetsFinalize(ICoreAPI api)
 	{
