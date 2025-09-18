@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using ForagersGamble.Config;
 using HarmonyLib;
 using Vintagestory.API.Client;
@@ -51,12 +52,25 @@ namespace ForagersGamble.Patches
                     }
                 }
             }
+
             var path = coll.Code.Path ?? "";
             if (string.IsNullOrWhiteSpace(path)) return null;
+
             var stageWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "ripe", "unripe", "empty", "flowering", "flower", "immature", "mature", "harvested",
                 "small", "medium", "large", "stage", "young", "old", "branch", "foliage", "leaves", "leaf", "trunk"
+            };
+
+            var colorWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "white", "black", "gray", "grey", "lightgray", "darkgray", "red", "orange", "yellow", "green",
+                "blue", "teal", "cyan", "aqua", "purple", "violet", "magenta", "pink", "brown", "beige", "tan"
+            };
+            var materialWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "tile", "claytile", "brick", "plank", "wood", "stone", "granite", "basalt", "limestone", "sandstone",
+                "metal", "copper", "tin", "bronze", "iron", "steel", "cloth", "linen", "wool", "glass", "paper"
             };
 
             var tokens = path.Split('-');
@@ -64,8 +78,17 @@ namespace ForagersGamble.Patches
             {
                 var tok = rawTok.Trim();
                 if (tok.Length < 3 || stageWords.Contains(tok)) continue;
-                var baseTok = tok.Replace("berries", "berry", StringComparison.OrdinalIgnoreCase).Trim('-', '_', '.');
+
+                if (colorWords.Contains(tok)) continue;
+                if (materialWords.Contains(tok)) continue;
+
+                var baseTok = tok.Replace("berries", "berry", StringComparison.OrdinalIgnoreCase)
+                    .Trim('-', '_', '.');
+
+                if (baseTok.Any(char.IsDigit)) continue;
+
                 var candidate = new AssetLocation("game", "fruit-" + baseTok);
+
                 var item = api.World.GetItem(candidate);
                 if (item != null)
                 {
@@ -75,6 +98,7 @@ namespace ForagersGamble.Patches
                         p.FoodCategory != EnumFoodCategory.NoNutrition)
                         return t;
                 }
+
                 var block = api.World.GetBlock(candidate);
                 if (block != null)
                 {
