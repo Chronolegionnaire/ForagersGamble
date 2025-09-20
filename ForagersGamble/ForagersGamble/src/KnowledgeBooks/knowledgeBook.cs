@@ -75,7 +75,11 @@ namespace ForagersGamble.KnowledgeBooks
                 base.OnHeldInteractStart(slot, byEntity, blockSel, entitySel, firstEvent, ref handling);
                 return;
             }
-
+            if (byEntity.Controls.ShiftKey)
+            {
+                base.OnHeldInteractStart(slot, byEntity, blockSel, entitySel, firstEvent, ref handling);
+                return;
+            }
             var player = (byEntity as EntityPlayer)?.Player;
             if (player == null)
             {
