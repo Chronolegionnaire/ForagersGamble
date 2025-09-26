@@ -1,3 +1,4 @@
+using System;
 using HarmonyLib;
 using System.Collections.Generic;
 using System.Linq;
@@ -81,7 +82,7 @@ namespace ForagersGamble.Patches
             return false;
         }
 
-        static void RemoveLines(StringBuilder dsc, Func<string, bool> predicate)
+        static void RemoveLines(StringBuilder dsc, Vintagestory.API.Common.Func<string, bool> predicate)
         {
             var lines = dsc.ToString().Replace("\r\n", "\n").Split('\n').ToList();
             var kept  = lines.Where(l => !predicate(l)).ToList();
@@ -131,6 +132,32 @@ namespace ForagersGamble.Patches
 
             return false;
         }
+        static bool IsActuallyEdible(ItemStack stack, IWorldAccessor world, EntityAgent agent)
+        {
+            var props = stack?.Collectible?.GetNutritionProperties(world, stack, agent as EntityPlayer);
+            if (props == null) return false;
+            return props.FoodCategory != EnumFoodCategory.Unknown &&
+                   props.FoodCategory != EnumFoodCategory.NoNutrition;
+        }
+
+        public static void AppendKnowledgeProgressLine(ItemSlot inSlot, StringBuilder dsc, IWorldAccessor world)
+        {
+            var agent = world.Side == EnumAppSide.Client ? (world as IClientWorldAccessor)?.Player?.Entity : null;
+            var stack = inSlot?.Itemstack;
+            if (agent == null || stack == null) return;
+            if (!InSurvival(agent)) return;
+            if (!IsActuallyEdible(stack, world, agent)) return;
+            float prog = Knowledge.GetProgress(agent, stack);
+            if (prog >= 0.9999f) return;
+            int pct = Math.Max(0, Math.Min(99, (int)Math.Round(prog * 100f)));
+            string line = Lang.Get("foragersgamble:knowledge-progress", pct);
+            if (line == "foragersgamble:knowledge-progress")
+            {
+                line = $"Knowledge: {pct}% learned";
+            }
+
+            dsc.AppendLine(line);
+        }
     }
 
     [HarmonyPatch(typeof(CollectibleObject), nameof(CollectibleObject.GetHeldItemInfo))]
@@ -150,6 +177,9 @@ namespace ForagersGamble.Patches
             );
 
         static void Postfix(ItemSlot inSlot, StringBuilder dsc, IWorldAccessor world, bool withDebugInfo)
-            => DisplayGating.ScrubTooltipIfHidden(inSlot, dsc, world);
+        {
+            DisplayGating.ScrubTooltipIfHidden(inSlot, dsc, world);
+            DisplayGating.AppendKnowledgeProgressLine(inSlot, dsc, world);
+        }
     }
 }

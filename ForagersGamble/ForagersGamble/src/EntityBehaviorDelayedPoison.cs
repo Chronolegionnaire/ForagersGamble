@@ -300,7 +300,7 @@ namespace ForagersGamble.Behaviors
             minH = GameMath.Clamp(minH, 0f, 240f);
             maxH = GameMath.Clamp(Math.Max(minH, maxH), 0f, 240f);
         }
-
+        
         private void SendSeverityWarning(float damage, string itemKey = null)
         {
             if (entity.World.Side != EnumAppSide.Server) return;
@@ -329,14 +329,18 @@ namespace ForagersGamble.Behaviors
 
             if (showFood)
             {
-                string foodName = ResolveItemName(itemKey);
+                string foodName = "(unknown)";
+                if (!string.IsNullOrEmpty(itemKey))
+                {
+                    bool discovered = Knowledge.IsKnown(ep, itemKey);
+                    if (discovered) foodName = ResolveItemName(itemKey);
+                }
                 sp.SendIngameError("poison", Lang.Get(key, foodName));
             }
             else
             {
                 sp.SendIngameError("poison", Lang.Get(key));
             }
-
         }
         
         private void SendInstantThresholdWarning(float totalDamage)

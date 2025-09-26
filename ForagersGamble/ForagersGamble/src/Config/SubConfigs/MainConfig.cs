@@ -79,8 +79,22 @@ namespace ForagersGamble.Config.SubConfigs
         [Range(0, 1)]
         [DefaultValue(0.001f)]
         public float PoisonDeadJimChance { get; set; } = 0.001f;
+        
+        [Category("Knowledge")]
+        [Range(0, 1)]
+        [DefaultValue(0.50f)]
+        public float LearnChancePerEat { get; set; } = 0.50f;
 
-        [Category("Poison")]
+        [Category("Knowledge")]
+        [Range(0, 1)]
+        [DefaultValue(0.20f)]
+        public float LearnAmountPerEat { get; set; } = 0.20f;
+
+        [Category("Knowledge")]
+        [DefaultValue(true)]
+        public bool JournalConsumeOnLearn { get; set; } = true;
+
+        [Category("Knowledge")]
         [Display(Name = "Onset Multipliers by Class", Description = "Per-class scaling for onset. min/max are applied to the base onset range, then clamped to 0..240 hours.")]
         [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
         public Dictionary<string, OnsetScale> PoisonOnsetClassScales { get; set; } = new()

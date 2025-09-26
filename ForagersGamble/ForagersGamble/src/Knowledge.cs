@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
@@ -9,53 +10,87 @@ namespace ForagersGamble
         private const string AttrRoot        = "foragersGamble";
         private const string KnownSet        = "knownFoods";
         private const string KnownHealthSet  = "knownHealth";
+        private const string ProgressTree    = "knowledgeProgress";
 
-        public static bool IsKnown(EntityAgent entity, ItemStack stack)
+        public static float GetProgress(EntityAgent entity, ItemStack stack)
+            => GetProgress(entity, ItemKey(stack));
+
+        public static float GetProgress(EntityAgent entity, string code)
         {
-            if (entity == null || stack == null) return false;
+            if (entity == null || string.IsNullOrEmpty(code)) return 0f;
+            var player = (entity as EntityPlayer)?.Player;
+            if (player == null) return 0f;
+
+            var root = player.Entity.WatchedAttributes.GetTreeAttribute(AttrRoot);
+            if (root == null) return 0f;
+
+            var legacy = root[KnownSet] as StringArrayAttribute;
+            if (legacy?.value != null)
+            {
+                for (int i = 0; i < legacy.value.Length; i++)
+                    if (legacy.value[i] == code) return 1f;
+            }
+
+            var prog = root.GetTreeAttribute(ProgressTree);
+            return prog?.GetFloat(code, 0f) ?? 0f;
+        }
+
+        public static bool AddProgress(EntityAgent entity, string code, float amount)
+        {
+            if (entity == null || string.IsNullOrEmpty(code) || amount <= 0f) return false;
             var player = (entity as EntityPlayer)?.Player;
             if (player == null) return false;
 
-            var root = player.Entity.WatchedAttributes.GetTreeAttribute(AttrRoot);
-            if (root == null) return false;
+            var wat  = player.Entity.WatchedAttributes;
+            var root = wat.GetTreeAttribute(AttrRoot) ?? new TreeAttribute();
+            var prog = root.GetTreeAttribute(ProgressTree) ?? new TreeAttribute();
 
-            var known = root[KnownSet] as StringArrayAttribute;
-            if (known == null) return false;
+            float cur = prog.GetFloat(code, 0f);
+            float next = Math.Min(1f, cur + amount);
+            if (Math.Abs(next - cur) < 0.0001f) return false;
 
-            var code = ItemKey(stack);
-            foreach (var s in known.value)
-            {
-                if (s == code) return true;
-            }
-            return false;
+            prog.SetFloat(code, next);
+            root[ProgressTree] = prog;
+            wat.SetAttribute(AttrRoot, root);
+            player.Entity.Attributes.MarkPathDirty(AttrRoot);
+            return next >= 1f;
         }
-        public static void MarkKnown(EntityAgent entity, ItemStack stack)
+        public static void MarkDiscovered(EntityAgent entity, string code)
         {
-            if (entity == null || stack == null) return;
-            var code = ItemKey(stack);
-            MarkKnown(entity, code);
-        }
-        public static void MarkKnown(EntityAgent entity, string code)
-        {
-            if (entity == null || string.IsNullOrEmpty(code)) return;
+            if (string.IsNullOrEmpty(code) || entity == null) return;
             var player = (entity as EntityPlayer)?.Player;
             if (player == null) return;
 
-            var wat = player.Entity.WatchedAttributes;
+            var wat  = player.Entity.WatchedAttributes;
             var root = wat.GetTreeAttribute(AttrRoot) ?? new TreeAttribute();
+            var prog = root.GetTreeAttribute(ProgressTree) ?? new TreeAttribute();
 
+            prog.SetFloat(code, 1f);
+            root[ProgressTree] = prog;
+            // keep old KnownSet for save-compat, but ensure it contains the code
             var list = new List<string>();
-            var cur = root[KnownSet] as StringArrayAttribute;
-            if (cur != null) list.AddRange(cur.value);
+            var cur  = root[KnownSet] as StringArrayAttribute;
+            if (cur?.value != null) list.AddRange(cur.value);
+            if (!list.Contains(code)) list.Add(code);
+            root[KnownSet] = new StringArrayAttribute(list.ToArray());
 
-            if (!list.Contains(code))
-            {
-                list.Add(code);
-                root[KnownSet] = new StringArrayAttribute(list.ToArray());
-                wat.SetAttribute(AttrRoot, root);
-                player.Entity.Attributes.MarkPathDirty(AttrRoot);
-            }
+            wat.SetAttribute(AttrRoot, root);
+            player.Entity.Attributes.MarkPathDirty(AttrRoot);
         }
+        public static bool IsKnown(EntityAgent entity, ItemStack stack)
+            => IsKnown(entity, ItemKey(stack)); // CHANGED (overload convenience)
+
+        public static bool IsKnown(EntityAgent entity, string code) // NEW overload
+            => GetProgress(entity, code) >= 1f;
+
+        public static void MarkKnown(EntityAgent entity, ItemStack stack)
+        {
+            if (entity == null || stack == null) return;
+            MarkDiscovered(entity, ItemKey(stack)); // CHANGED: funnel to progress=1
+        }
+
+        public static void MarkKnown(EntityAgent entity, string code)
+            => MarkDiscovered(entity, code);
 
         public static bool IsHealthKnown(EntityAgent entity, ItemStack stack)
             => IsHealthKnown(entity, ItemKey(stack));

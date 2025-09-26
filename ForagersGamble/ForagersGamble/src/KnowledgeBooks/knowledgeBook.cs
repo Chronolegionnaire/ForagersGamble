@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Text;
+using ForagersGamble.Config;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
@@ -101,7 +102,10 @@ namespace ForagersGamble.KnowledgeBooks
                 }
 
                 ApplyBookKnowledgeToPlayer(stack, byEntity);
-                ConsumeOne(slot);
+                if (ModConfig.Instance.Main.JournalConsumeOnLearn)
+                {
+                    ConsumeOne(slot);
+                }
                 Feedback(player, Lang.Get("foragersgamble:kb.msg.studied"));
                 return;
             }

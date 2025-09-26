@@ -77,5 +77,7 @@
 
   "foragersgamble:kb.msg.needquill": "You need a quill in the other hand to inscribe this journal.",
   "foragersgamble:kb.msg.inscribed": "You inscribe your field notes into the journal.",
-  "foragersgamble:kb.msg.studied": "You study the journal and recall forgotten tastes."
+  "foragersgamble:kb.msg.studied": "You study the journal and recall forgotten tastes.",
+
+  "foragersgamble:knowledge-progress": "Knowledge: {0}% learned"
 }
