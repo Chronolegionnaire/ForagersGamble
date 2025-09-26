@@ -93,6 +93,14 @@ namespace ForagersGamble.Config.SubConfigs
         [Category("Knowledge")]
         [DefaultValue(true)]
         public bool JournalConsumeOnLearn { get; set; } = true;
+        
+        [Category("Main")]
+        [DefaultValue(false)]
+        public bool RandomizeDamagingItems { get; set; } = false;
+        
+        [Category("Main")]
+        [DefaultValue(false)]
+        public bool RandomizeHealingItems { get; set; } = false;
 
         [Category("Knowledge")]
         [Display(Name = "Onset Multipliers by Class", Description = "Per-class scaling for onset. min/max are applied to the base onset range, then clamped to 0..240 hours.")]

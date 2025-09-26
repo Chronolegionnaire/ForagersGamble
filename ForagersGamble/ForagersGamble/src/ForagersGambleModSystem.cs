@@ -1,5 +1,4 @@
-﻿
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using ForagersGamble.Behaviors;
 using ForagersGamble.Config;
 using ForagersGamble.KnowledgeBooks;
@@ -57,6 +56,10 @@ public class ForagersGambleModSystem : ModSystem
 				..playerEntity.Client.BehaviorsAsJsonObj,
 				..fgBehaviors
 			];
+		}
+		if (Config.ModConfig.Instance?.Main?.RandomizeDamagingItems == true)
+		{
+			new ForagersGamble.Randomize.Randomizer().RandomizeFoodHealth(api);
 		}
 	}
 	public override void StartServerSide(ICoreServerAPI sapi)
