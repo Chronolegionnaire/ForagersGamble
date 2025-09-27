@@ -19,6 +19,8 @@ namespace ForagersGamble.Randomize
             public bool HadHealthField { get; init; }
         }
         bool randomizeHealing = ModConfig.Instance?.Main?.RandomizeHealingItems == true;
+        static bool ShouldIgnore(AssetLocation code) =>
+            code != null && string.Equals(code.Domain, "hydrateordiedrate", StringComparison.OrdinalIgnoreCase);
         public void RandomizeFoodHealth(ICoreAPI api)
         {
             if (api?.World?.Collectibles == null) return;
@@ -49,7 +51,7 @@ namespace ForagersGamble.Randomize
             foreach (var obj in api.World.Collectibles)
             {
                 if (obj?.Code == null) continue;
-
+                if (ShouldIgnore(obj.Code)) continue;
                 var group = GroupKeyFor(obj.Code);
                 var list = GetList(candidatesByGroup, group);
                 if (obj.NutritionProps != null)
