@@ -98,15 +98,47 @@ public class ForagersGambleModSystem : ModSystem
 	{
 		if (hotkeyCode != "handbook") return;
 		if (ModConfig.Instance?.Main?.PreventHandbookOnUnidentified != true) return;
+
 		var player = capi.World?.Player;
 		if (player == null) return;
 		var gm = player.WorldData?.CurrentGameMode ?? EnumGameMode.Survival;
 		if (gm != EnumGameMode.Survival) return;
+
 		var slot = player.InventoryManager?.CurrentHoveredSlot;
 		if (slot == null || slot.Empty) return;
 
-		var code  = ForagersGamble.Knowledge.ItemKey(slot.Itemstack);
-		var known = ForagersGamble.Knowledge.IsKnown(player.Entity, code);
+		var stack = slot.Itemstack;
+		var coll  = stack.Collectible;
+		var world = capi.World;
+		var agent = player.Entity as EntityAgent;
+		bool isEdible = false;
+		{
+			var props = coll?.GetNutritionProperties(world, stack, agent as EntityPlayer);
+			isEdible = props != null
+			           && props.FoodCategory != EnumFoodCategory.Unknown
+			           && props.FoodCategory != EnumFoodCategory.NoNutrition;
+		}
+
+		bool isGatedPlant = false;
+		{
+			var asBlock = stack.Block ?? coll as Block;
+			if (asBlock != null)
+			{
+				var idx = PlantKnowledgeIndex.Get(capi);
+				if (idx != null)
+				{
+					var code = asBlock.Code?.ToString() ?? "";
+					isGatedPlant = idx.IsKnowledgeGated(code);
+				}
+				else
+				{
+					isGatedPlant = PlantKnowledgeUtil.IsKnowledgeGatedPlant(asBlock);
+				}
+			}
+		}
+		if (!isEdible && !isGatedPlant) return;
+		var codeKey = ForagersGamble.Knowledge.ItemKey(stack);
+		var known   = ForagersGamble.Knowledge.IsKnown(player.Entity, codeKey);
 		if (known) return;
 		CloseHandbookIfOpen();
 		capi.Event.EnqueueMainThreadTask(() => CloseHandbookIfOpen(), "fg-close-handbook-1");
