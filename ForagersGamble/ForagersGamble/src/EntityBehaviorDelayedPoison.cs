@@ -122,7 +122,7 @@ namespace ForagersGamble.Behaviors
             if (!entity.Alive) return;
             if (!Config.ModConfig.Instance.Main.PoisonOnset) return;
 
-            float thresh = Config.ModConfig.Instance.Main.InstantDeathThreshhold;
+            float thresh = Config.ModConfig.Instance.Main.InstantDeathThreshold;
             if (thresh <= 0f) return;
 
             float total = TotalQueuedDamage();

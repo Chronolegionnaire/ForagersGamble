@@ -205,18 +205,14 @@ namespace ForagersGamble.Patches
                     if (!string.IsNullOrEmpty(key))
                     {
                         var cfg = Config.ModConfig.Instance?.Main;
-                        float chance = Math.Max(0f, Math.Min(1f, cfg?.LearnChancePerEat ?? 0.20f));
                         float amt    = Math.Max(0f, Math.Min(1f, cfg?.LearnAmountPerEat ?? 0.20f));
 
-                        if (chance > 0f && amt > 0f)
-                        {
-                            if (byEntity.World.Rand.NextDouble() < chance)
+                        if (amt > 0f)
+                        { 
+                            bool nowDiscovered = Knowledge.AddProgress(byEntity, key, amt);
+                            if (nowDiscovered)
                             {
-                                bool nowDiscovered = Knowledge.AddProgress(byEntity, key, amt);
-                                if (nowDiscovered)
-                                {
-                                    Knowledge.MarkDiscovered(byEntity, key);
-                                }
+                                Knowledge.MarkDiscovered(byEntity, key);
                             }
                         }
                     }

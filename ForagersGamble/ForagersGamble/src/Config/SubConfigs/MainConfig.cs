@@ -67,7 +67,7 @@ namespace ForagersGamble.Config.SubConfigs
         )]
         [Range(-1, 100000)]
         [DefaultValue(100f)]
-        public float InstantDeathThreshhold { get; set; } = 30f;
+        public float InstantDeathThreshold { get; set; } = 30f;
         
         [Category("Main")]
         [Display(Name = "Show what caused poison in damage text.")]
@@ -79,20 +79,19 @@ namespace ForagersGamble.Config.SubConfigs
         [Range(0, 1)]
         [DefaultValue(0.001f)]
         public float PoisonDeadJimChance { get; set; } = 0.001f;
-        
-        [Category("Knowledge")]
-        [Range(0, 1)]
-        [DefaultValue(0.50f)]
-        public float LearnChancePerEat { get; set; } = 0.50f;
 
         [Category("Knowledge")]
         [Range(0, 1)]
-        [DefaultValue(0.20f)]
-        public float LearnAmountPerEat { get; set; } = 0.20f;
+        [DefaultValue(0.35f)]
+        public float LearnAmountPerEat { get; set; } = 0.35f;
 
         [Category("Knowledge")]
         [DefaultValue(true)]
         public bool JournalConsumeOnLearn { get; set; } = true;
+        
+        [Category("Knowledge")]
+        [DefaultValue(true)]
+        public bool PreventHandbookOnUnidentified { get; set; } = true;
         
         [Category("Main")]
         [DefaultValue(false)]
