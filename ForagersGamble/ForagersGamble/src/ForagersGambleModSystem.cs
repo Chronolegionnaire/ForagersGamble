@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Collections.Generic;
 using ForagersGamble.Behaviors;
 using ForagersGamble.Config;
 using ForagersGamble.KnowledgeBooks;
@@ -8,7 +6,6 @@ using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
-using Vintagestory.API.Config;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 
@@ -19,6 +16,7 @@ public class ForagersGambleModSystem : ModSystem
 	public const string HarmonyID = "com.chronolegionnaire.foragersgamble";
 	private Harmony harmony;
 	ICoreClientAPI capi;
+	private ForagersGamble.Handbook.HandbookBlock _handbookBlock;
 	public override void StartPre(ICoreAPI api)
 	{
 		base.StartPre(api);
@@ -89,69 +87,12 @@ public class ForagersGambleModSystem : ModSystem
 
 		if (ModConfig.Instance.Main.PreventHandbookOnUnidentified)
 		{
-			capi.Input.AddHotkeyListener(OnAnyHotkey);
-		}
-		if(capi.ModLoader.IsModEnabled("configlib")) ConfigLibCompatibility.Init(capi);
-	}
-
-	private void OnAnyHotkey(string hotkeyCode, KeyCombination comb)
-	{
-		if (hotkeyCode != "handbook") return;
-		if (ModConfig.Instance?.Main?.PreventHandbookOnUnidentified != true) return;
-
-		var player = capi.World?.Player;
-		if (player == null) return;
-		var gm = player.WorldData?.CurrentGameMode ?? EnumGameMode.Survival;
-		if (gm != EnumGameMode.Survival) return;
-
-		var slot = player.InventoryManager?.CurrentHoveredSlot;
-		if (slot == null || slot.Empty) return;
-
-		var stack = slot.Itemstack;
-		var coll  = stack.Collectible;
-		var world = capi.World;
-		var agent = player.Entity as EntityAgent;
-		bool isEdible = false;
-		{
-			var props = coll?.GetNutritionProperties(world, stack, agent as EntityPlayer);
-			isEdible = props != null
-			           && props.FoodCategory != EnumFoodCategory.Unknown
-			           && props.FoodCategory != EnumFoodCategory.NoNutrition;
+			_handbookBlock = new ForagersGamble.Handbook.HandbookBlock(capi);
+			capi.Input.AddHotkeyListener(_handbookBlock.OnAnyHotkey);
 		}
 
-		bool isGatedPlant = false;
-		{
-			var asBlock = stack.Block ?? coll as Block;
-			if (asBlock != null)
-			{
-				var idx = PlantKnowledgeIndex.Get(capi);
-				if (idx != null)
-				{
-					var code = asBlock.Code?.ToString() ?? "";
-					isGatedPlant = idx.IsKnowledgeGated(code);
-				}
-				else
-				{
-					isGatedPlant = PlantKnowledgeUtil.IsKnowledgeGatedPlant(asBlock);
-				}
-			}
-		}
-		if (!isEdible && !isGatedPlant) return;
-		var codeKey = ForagersGamble.Knowledge.ItemKey(stack);
-		var known   = ForagersGamble.Knowledge.IsKnown(player.Entity, codeKey);
-		if (known) return;
-		CloseHandbookIfOpen();
-		capi.Event.EnqueueMainThreadTask(() => CloseHandbookIfOpen(), "fg-close-handbook-1");
-		capi.Event.EnqueueMainThreadTask(() => CloseHandbookIfOpen(), "fg-close-handbook-2");
-		capi.TriggerIngameError(this, "notidentified", Lang.Get("foragersgamble:unidentified"));
-	}
-	private void CloseHandbookIfOpen()
-	{
-		var dlg = capi.Gui.LoadedGuis?.FirstOrDefault(d => d is Vintagestory.GameContent.GuiDialogHandbook);
-		if (dlg != null && dlg.IsOpened())
-		{
-			dlg.TryClose();
-		}
+		if (capi.ModLoader.IsModEnabled("configlib"))
+			ConfigLibCompatibility.Init(capi);
 	}
 	public override void Dispose()
 	{

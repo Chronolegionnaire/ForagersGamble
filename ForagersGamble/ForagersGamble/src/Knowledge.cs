@@ -67,7 +67,6 @@ namespace ForagersGamble
 
             prog.SetFloat(code, 1f);
             root[ProgressTree] = prog;
-            // keep old KnownSet for save-compat, but ensure it contains the code
             var list = new List<string>();
             var cur  = root[KnownSet] as StringArrayAttribute;
             if (cur?.value != null) list.AddRange(cur.value);
@@ -78,15 +77,15 @@ namespace ForagersGamble
             player.Entity.Attributes.MarkPathDirty(AttrRoot);
         }
         public static bool IsKnown(EntityAgent entity, ItemStack stack)
-            => IsKnown(entity, ItemKey(stack)); // CHANGED (overload convenience)
+            => IsKnown(entity, ItemKey(stack));
 
-        public static bool IsKnown(EntityAgent entity, string code) // NEW overload
+        public static bool IsKnown(EntityAgent entity, string code)
             => GetProgress(entity, code) >= 1f;
 
         public static void MarkKnown(EntityAgent entity, ItemStack stack)
         {
             if (entity == null || stack == null) return;
-            MarkDiscovered(entity, ItemKey(stack)); // CHANGED: funnel to progress=1
+            MarkDiscovered(entity, ItemKey(stack));
         }
 
         public static void MarkKnown(EntityAgent entity, string code)
