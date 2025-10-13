@@ -37,6 +37,7 @@ public class HandbookBlock
 		var world = capi.World;
 		var agent = player.Entity as EntityAgent;
 		var coll = stack.Collectible;
+
 		bool IsEdibleProps(FoodNutritionProperties p) =>
 			p != null && p.FoodCategory != EnumFoodCategory.Unknown && p.FoodCategory != EnumFoodCategory.NoNutrition;
 
@@ -138,22 +139,24 @@ public class HandbookBlock
 
 			return false;
 		}
+
 		bool isEdible = false;
 		{
 			var props = coll?.GetNutritionProperties(world, stack, agent as EntityPlayer);
 			isEdible = IsEdibleProps(props);
 		}
+
 		bool isGatedPlant = false;
 		Block asBlock = null;
 		{
 			asBlock = stack.Block ?? coll as Block;
 			if (asBlock != null)
 			{
-				var idx = PlantKnowledgeIndex.Get(capi);
-				if (idx != null)
+				var pidx = PlantKnowledgeIndex.Get(capi);
+				if (pidx != null)
 				{
 					var code = asBlock.Code?.ToString() ?? "";
-					isGatedPlant = idx.IsKnowledgeGated(code);
+					isGatedPlant = pidx.IsKnowledgeGated(code);
 				}
 				else
 				{
@@ -161,71 +164,108 @@ public class HandbookBlock
 				}
 			}
 		}
+
 		bool isMushroom = false;
 		{
-			var idx = PlantKnowledgeIndex.Get(capi);
+			var pidx = PlantKnowledgeIndex.Get(capi);
 			var key = ForagersGamble.Knowledge.ItemKey(stack);
-			isMushroom = idx != null && !string.IsNullOrEmpty(key) && idx.IsMushroom(key);
+			isMushroom = pidx != null && !string.IsNullOrEmpty(key) && pidx.IsMushroom(key);
 		}
+
 		bool guardPlants = cfg.UnknownAll == true || cfg.UnknownPlants;
 		bool guardMushrooms = cfg.UnknownAll == true || cfg.UnknownMushrooms;
 		bool guardEverything = cfg.UnknownAll == true;
 		if (!guardPlants && !guardMushrooms && !guardEverything) return;
 
+		ItemStack edibleCounterpart = null;
+		bool hasEdibleCounterpart = false;
+		if (asBlock != null)
+		{
+			if (!hasEdibleCounterpart &&
+			    TryResolveFruitFromFruitTreeBlock(asBlock, stack, out var fruitFromAttrs) && fruitFromAttrs != null)
+			{
+				edibleCounterpart = fruitFromAttrs;
+				hasEdibleCounterpart = true;
+			}
+			if (!hasEdibleCounterpart &&
+			    PlantKnowledgeUtil.TryResolveReferenceFruit(capi, asBlock, stack, out var fruitRef) && fruitRef != null)
+			{
+				edibleCounterpart = fruitRef;
+				hasEdibleCounterpart = true;
+			}
+		}
+		if (!hasEdibleCounterpart &&
+		    PlantKnowledgeUtil.TryResolveBaseProduceFromItem(capi, stack, out var baseProduce) && baseProduce != null)
+		{
+			edibleCounterpart = baseProduce;
+			hasEdibleCounterpart = true;
+		}
+		bool shouldGatePlantsNow = isEdible || (isGatedPlant && hasEdibleCounterpart);
+
 		bool shouldGateThis =
 			guardEverything
-			|| (guardPlants && (isEdible || isGatedPlant))
+			|| (guardPlants && shouldGatePlantsNow)
 			|| (guardMushrooms && isMushroom);
 
 		if (!shouldGateThis) return;
-		var codeKey = ForagersGamble.Knowledge.ItemKey(stack);
-		bool knownEnough = ForagersGamble.Knowledge.IsKnown(player.Entity, codeKey);
-		if (!knownEnough && isGatedPlant && asBlock != null)
+		bool knownEnough = false;
 		{
-			if (TryResolveFruitFromFruitTreeBlock(asBlock, stack, out var fruitFromAttrs) && fruitFromAttrs != null)
-			{
-				var fkey = ForagersGamble.Knowledge.ItemKey(fruitFromAttrs);
-				if (!string.IsNullOrEmpty(fkey) && ForagersGamble.Knowledge.IsKnown(player.Entity, fkey))
-				{
-					knownEnough = true;
-				}
-			}
-			if (!knownEnough)
-			{
-				var idx = PlantKnowledgeIndex.Get(capi);
-				if (idx != null && idx.TryGetFruit(asBlock.Code?.ToString(), out var fr))
-				{
-					ItemStack fruitStack = null;
-					if (fr.Type == EnumItemClass.Item)
-					{
-						var it = capi.World.GetItem(fr.Code);
-						if (it != null) fruitStack = new ItemStack(it);
-					}
-					else
-					{
-						var bl = capi.World.GetBlock(fr.Code);
-						if (bl != null) fruitStack = new ItemStack(bl);
-					}
+			string codeKey = isEdible
+				? ForagersGamble.Knowledge.ItemKey(stack)
+				: ForagersGamble.Knowledge.ItemKey(edibleCounterpart);
 
-					if (fruitStack != null)
+			if (!string.IsNullOrEmpty(codeKey))
+			{
+				knownEnough = ForagersGamble.Knowledge.IsKnown(player.Entity, codeKey);
+			}
+			if (!knownEnough && isGatedPlant && asBlock != null)
+			{
+				if (TryResolveFruitFromFruitTreeBlock(asBlock, stack, out var fruitFromAttrs2) && fruitFromAttrs2 != null)
+				{
+					var fkey = ForagersGamble.Knowledge.ItemKey(fruitFromAttrs2);
+					if (!string.IsNullOrEmpty(fkey) && ForagersGamble.Knowledge.IsKnown(player.Entity, fkey))
 					{
-						var fkey = ForagersGamble.Knowledge.ItemKey(fruitStack);
+						knownEnough = true;
+					}
+				}
+				if (!knownEnough)
+				{
+					var pidx = PlantKnowledgeIndex.Get(capi);
+					if (pidx != null && pidx.TryGetFruit(asBlock.Code?.ToString(), out var fr))
+					{
+						ItemStack fruitStack = null;
+						if (fr.Type == EnumItemClass.Item)
+						{
+							var it = capi.World.GetItem(fr.Code);
+							if (it != null) fruitStack = new ItemStack(it);
+						}
+						else
+						{
+							var bl = capi.World.GetBlock(fr.Code);
+							if (bl != null) fruitStack = new ItemStack(bl);
+						}
+
+						if (fruitStack != null)
+						{
+							var fkey = ForagersGamble.Knowledge.ItemKey(fruitStack);
+							if (!string.IsNullOrEmpty(fkey) && ForagersGamble.Knowledge.IsKnown(player.Entity, fkey))
+								knownEnough = true;
+						}
+					}
+				}
+				if (!knownEnough)
+				{
+					if (PlantKnowledgeUtil.TryResolveReferenceFruit(capi, asBlock, stack, out var fruitRef) &&
+					    fruitRef != null)
+					{
+						var fkey = ForagersGamble.Knowledge.ItemKey(fruitRef);
 						if (!string.IsNullOrEmpty(fkey) && ForagersGamble.Knowledge.IsKnown(player.Entity, fkey))
 							knownEnough = true;
 					}
 				}
 			}
-			if (!knownEnough)
-			{
-				if (PlantKnowledgeUtil.TryResolveReferenceFruit(capi, asBlock, stack, out var fruitRef) &&
-				    fruitRef != null)
-				{
-					var fkey = ForagersGamble.Knowledge.ItemKey(fruitRef);
-					if (!string.IsNullOrEmpty(fkey) && ForagersGamble.Knowledge.IsKnown(player.Entity, fkey))
-						knownEnough = true;
-				}
-			}
 		}
+
 		if (knownEnough) return;
 		CloseHandbookIfOpen();
 		capi.Event.EnqueueMainThreadTask(() => CloseHandbookIfOpen(), "fg-close-handbook-1");
