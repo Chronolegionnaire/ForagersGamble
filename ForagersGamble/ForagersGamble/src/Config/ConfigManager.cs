@@ -12,7 +12,7 @@ public static class ConfigManager
 {
     public static void EnsureModConfigLoaded(ICoreAPI api)
     {
-        if(ModConfig.Instance is not null) return; //Config already loaded
+        if(ModConfig.Instance is not null) return;
 
         if(api.Side == EnumAppSide.Server)
         {
@@ -43,7 +43,6 @@ public static class ConfigManager
     {
         var serializedConfig = JsonConvert.SerializeObject(ModConfig.Instance, Formatting.None);
 
-        //base64 encode for safety (because base game StringAttribute doesn't properly escape content when converting to JToken)
         var base64EncodedConfig = Convert.ToBase64String(Encoding.UTF8.GetBytes(serializedConfig));
 
         api.World.Config.SetString(ModConfig.ConfigPath, base64EncodedConfig);
@@ -74,7 +73,6 @@ public static class ConfigManager
             .Where(prop => prop.PropertyType.IsClass)
             .Select(prop => prop.GetValue(instance));
 
-        //Auto fields
         foreach(var subConfig in subConfigs)
         {
             foreach(var property in subConfig.GetType().GetProperties())

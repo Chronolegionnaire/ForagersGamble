@@ -2,7 +2,6 @@ using System;
 using HarmonyLib;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.Emit;
 using System.Text;
 using ForagersGamble.Config;
 using Vintagestory.API.Client;
@@ -18,6 +17,9 @@ namespace ForagersGamble.Patches
             var ep = agent as EntityPlayer;
             return ep?.Player?.WorldData?.CurrentGameMode == EnumGameMode.Survival;
         }
+        
+        static bool MaskingAllowed(EntityAgent agent)
+            => !NameMaskingScope.IsActive && InSurvival(agent);
 
         static bool IsUnknownToPlayer(EntityAgent agent, ItemStack stack)
         {
@@ -101,6 +103,7 @@ namespace ForagersGamble.Patches
             var agent = world.Side == EnumAppSide.Client ? (world as IClientWorldAccessor)?.Player?.Entity : null;
             var stack = inSlot?.Itemstack;
             if (agent == null || stack == null) return;
+            if (NameMaskingScope.IsActive) return;
 
             if (HideNutrition(agent, stack))
             {
@@ -145,6 +148,7 @@ namespace ForagersGamble.Patches
             var agent = world.Side == EnumAppSide.Client ? (world as IClientWorldAccessor)?.Player?.Entity : null;
             var stack = inSlot?.Itemstack;
             if (agent == null || stack == null) return;
+            if (!MaskingAllowed(agent)) return;
             if (!InSurvival(agent)) return;
             if (!IsActuallyEdible(stack, world, agent)) return;
             float prog = Knowledge.GetProgress(agent, stack);

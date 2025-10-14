@@ -10,6 +10,16 @@ using Vintagestory.GameContent;
 
 namespace ForagersGamble.Patches
 {
+    internal static class NameMaskingScope
+    {
+        [ThreadStatic] private static int _depth;
+        public static bool IsActive => _depth > 0;
+
+        public static void Enter() { _depth++; }
+        public static void Exit()  { if (_depth > 0) _depth--; }
+        public static IDisposable Push() => new Scope();
+        private sealed class Scope : IDisposable { public void Dispose() => Exit(); public Scope() { Enter(); } }
+    }
     [HarmonyPatch(typeof(CollectibleObject), "GetHeldItemName")]
     public static class Patch_CollectibleObject_GetHeldItemName
     {
@@ -20,7 +30,7 @@ namespace ForagersGamble.Patches
                    p.FoodCategory != EnumFoodCategory.NoNutrition;
         }
 
-        static ItemStack TryResolveEdibleCounterpart(ICoreAPI api, PlantKnowledgeIndex idx, CollectibleObject coll,
+        public static ItemStack TryResolveEdibleCounterpart(ICoreAPI api, PlantKnowledgeIndex idx, CollectibleObject coll,
             ItemStack stack, EntityPlayer agent)
         {
             if (api?.World == null || coll?.Code == null) return null;
@@ -115,6 +125,7 @@ namespace ForagersGamble.Patches
 
         static void Postfix(CollectibleObject __instance, ItemStack itemStack, ref string __result, ICoreAPI ___api)
         {
+            if (NameMaskingScope.IsActive) return;
             var cfg = ModConfig.Instance?.Main;
             if (itemStack == null || ___api?.World == null || cfg == null) return;
             if (itemStack.Block is BlockLiquidContainerTopOpened container) return;
@@ -135,6 +146,36 @@ namespace ForagersGamble.Patches
             if (Knowledge.IsKnown(agent, itemStack)) return;
             var idx = PlantKnowledgeIndex.Get(___api);
             if (idx == null) return;
+            var attrsLiquid = __instance?.Attributes;
+            var hasLiquidPropsAttr = attrsLiquid?["waterTightContainerProps"]?.Exists == true;
+            bool hasLiquidPropsHelper = false;
+            try { hasLiquidPropsHelper = BlockLiquidContainerBase.GetContainableProps(itemStack) != null; } catch { }
+
+            if ((hasLiquidPropsAttr || hasLiquidPropsHelper)
+                && (cfg.UnknownAll == true || cfg.UnknownPlants || cfg.UnknownMushrooms))
+            {
+                var selfProps = __instance.GetNutritionProperties(world, itemStack, agent);
+                bool selfEdible = IsEdible(selfProps);
+                ItemStack parent = null;
+                if (!PlantKnowledgeUtil.TryResolveBaseProduceFromItem(___api, itemStack, out var baseProduce) || baseProduce == null)
+                    parent = TryResolveEdibleCounterpart(___api, PlantKnowledgeIndex.Get(___api), __instance, itemStack, agent);
+                else
+                    parent = baseProduce;
+                if (selfEdible)
+                {
+                    if (!Knowledge.IsKnown(agent, itemStack))
+                    {
+                        __result = Lang.Get("foragersgamble:unknown-liquid");
+                        return;
+                    }
+                    return;
+                }
+                if (parent != null && !Knowledge.IsKnown(agent, parent))
+                {
+                    __result = Lang.Get("foragersgamble:unknown-liquid");
+                    return;
+                }
+            }
             var thisCode = Knowledge.ItemKey(itemStack);
             if (!string.IsNullOrEmpty(thisCode) && idx.IsMushroom(thisCode) &&
                 (cfg.UnknownMushrooms || cfg.UnknownAll == true))

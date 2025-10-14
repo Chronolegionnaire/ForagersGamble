@@ -12,10 +12,6 @@ public class ModConfig
     public const string ConfigPath = "ForagersGambleConfig.json";
 
     public static ModConfig Instance { get; internal set; }
-    
-    /// <summary>
-    /// The configuration for advanced user options
-    /// </summary>
     public MainConfig Main { get; set; } = new();
 
     [JsonExtensionData]

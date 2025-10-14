@@ -72,7 +72,9 @@ namespace ForagersGamble
         public bool IsMushroom(string code) => !string.IsNullOrEmpty(code) && mushroomCodes.Contains(code);
 
         public bool IsKnowledgeGated(string blockCode) =>
-            !string.IsNullOrEmpty(blockCode) && knowledgeGatedBlocks.Contains(blockCode);
+            !string.IsNullOrEmpty(blockCode)
+            && knowledgeGatedBlocks.Contains(blockCode)
+            && !noFruit.Contains(blockCode);
 
         public bool TryGetFruit(string blockCode, out FruitRef fruit) =>
             plantToFruit.TryGetValue(blockCode ?? "", out fruit);
@@ -516,18 +518,54 @@ namespace ForagersGamble
                 return "foragersgamble:unknown-fruittree";
             return "foragersgamble:unknown-plant";
         }
-        public static bool IsKnowledgeGatedPlant(Block block)
+        public static bool IsKnowledgeGatedPlant(Block block, ICoreAPI api = null)
         {
+            if (block == null) return false;
+
+            var tn = block.GetType().Name;
+
+            if (tn.Contains("Coral", StringComparison.OrdinalIgnoreCase)) return false;
+            if (tn.Contains("Kelp", StringComparison.OrdinalIgnoreCase)) return false;
+            if (tn.Contains("Seaweed", StringComparison.OrdinalIgnoreCase)) return false;
+
+            var path = block.Code?.Path ?? "";
+            if ((path.Contains("flower", StringComparison.OrdinalIgnoreCase) ||
+                 path.Contains("lily",   StringComparison.OrdinalIgnoreCase)) &&
+                (block.Attributes?["NutritionProps"] == null))
+            {
+                return false;
+            }
             if (block is BlockBerryBush || block is BlockPlant || block is BlockCrop ||
-                block is BlockFruitTreeBranch || block is BlockFruitTreeFoliage) return true;
+                block is BlockFruitTreeBranch || block is BlockFruitTreeFoliage)
+            {
+                if (api != null &&
+                    !PlantKnowledgeUtil.TryResolveReferenceFruit(api, block, new ItemStack(block), out _))
+                {
+                    return false;
+                }
+
+                return true;
+            }
             var n = block.GetType().Name;
-            return n == "BlockFruitingVines"
-                || n == "GroundBerryPlant"
-                || n == "PricklyBerryBush"
-                || n == "HerbariumBerryBush"
-                || n == "HerbPlant"
-                || n == "StoneBerryPlant"
-                || n == "WaterHerb";
+            bool specialPlant = n == "BlockFruitingVines"
+                                || n == "GroundBerryPlant"
+                                || n == "PricklyBerryBush"
+                                || n == "HerbariumBerryBush"
+                                || n == "HerbPlant"
+                                || n == "StoneBerryPlant"
+                                || n == "WaterHerb";
+
+            if (specialPlant)
+            {
+                if (api != null &&
+                    !PlantKnowledgeUtil.TryResolveReferenceFruit(api, block, new ItemStack(block), out _))
+                {
+                    return false;
+                }
+
+                return true;
+            }
+            return false;
         }
     }
 }
