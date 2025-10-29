@@ -146,6 +146,8 @@ namespace ForagersGamble.Patches
             if (Knowledge.IsKnown(agent, itemStack)) return;
             var idx = PlantKnowledgeIndex.Get(___api);
             if (idx == null) return;
+            ItemStack baseProduce = null;
+            PlantKnowledgeUtil.TryResolveBaseProduceFromItem(___api, itemStack, out baseProduce);
             var attrsLiquid = __instance?.Attributes;
             var hasLiquidPropsAttr = attrsLiquid?["waterTightContainerProps"]?.Exists == true;
             bool hasLiquidPropsHelper = false;
@@ -156,11 +158,8 @@ namespace ForagersGamble.Patches
             {
                 var selfProps = __instance.GetNutritionProperties(world, itemStack, agent);
                 bool selfEdible = IsEdible(selfProps);
-                ItemStack parent = null;
-                if (!PlantKnowledgeUtil.TryResolveBaseProduceFromItem(___api, itemStack, out var baseProduce) || baseProduce == null)
-                    parent = TryResolveEdibleCounterpart(___api, PlantKnowledgeIndex.Get(___api), __instance, itemStack, agent);
-                else
-                    parent = baseProduce;
+                ItemStack parent = baseProduce ?? 
+                                   TryResolveEdibleCounterpart(___api, idx, __instance, itemStack, agent);
                 if (selfEdible)
                 {
                     if (!Knowledge.IsKnown(agent, itemStack))
@@ -174,6 +173,18 @@ namespace ForagersGamble.Patches
                 {
                     __result = Lang.Get("foragersgamble:unknown-liquid");
                     return;
+                }
+            }
+            if (baseProduce != null)
+            {
+                var baseKey = Knowledge.ItemKey(baseProduce);
+                if (!string.IsNullOrEmpty(baseKey) && idx.IsMushroom(baseKey) && (cfg.UnknownMushrooms || cfg.UnknownAll == true))
+                {
+                    if (!Knowledge.IsKnown(agent, baseProduce))
+                    {
+                        __result = Lang.Get("foragersgamble:unknown-mushroom");
+                        return;
+                    }
                 }
             }
             var thisCode = Knowledge.ItemKey(itemStack);
@@ -196,8 +207,7 @@ namespace ForagersGamble.Patches
             {
                 if (gatePlants)
                 {
-                    if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(___api, itemStack, out var baseProduce) &&
-                        baseProduce != null)
+                    if (baseProduce != null)
                     {
                         var baseProps = baseProduce.Collectible.GetNutritionProperties(world, baseProduce, agent);
                         var baseEdible = IsEdible(baseProps);
@@ -207,28 +217,16 @@ namespace ForagersGamble.Patches
 
                         if (baseEdible)
                         {
-                            if (isBaseItem && !Knowledge.IsKnown(agent, baseProduce))
+                            if (!Knowledge.IsKnown(agent, baseProduce))
                             {
                                 switch (baseProps.FoodCategory)
                                 {
-                                    case EnumFoodCategory.Fruit:
-                                        __result = Lang.Get("foragersgamble:unknown-fruit");
-                                        return;
-                                    case EnumFoodCategory.Vegetable:
-                                        __result = Lang.Get("foragersgamble:unknown-vegetable");
-                                        return;
-                                    case EnumFoodCategory.Grain:
-                                        __result = Lang.Get("foragersgamble:unknown-grain");
-                                        return;
-                                    case EnumFoodCategory.Protein:
-                                        __result = Lang.Get("foragersgamble:unknown-protein");
-                                        return;
-                                    case EnumFoodCategory.Dairy:
-                                        __result = Lang.Get("foragersgamble:unknown-dairy");
-                                        return;
-                                    default:
-                                        __result = Lang.Get("foragersgamble:unknown-food");
-                                        return;
+                                    case EnumFoodCategory.Fruit:     __result = Lang.Get("foragersgamble:unknown-fruit");     return;
+                                    case EnumFoodCategory.Vegetable: __result = Lang.Get("foragersgamble:unknown-vegetable"); return;
+                                    case EnumFoodCategory.Grain:     __result = Lang.Get("foragersgamble:unknown-grain");     return;
+                                    case EnumFoodCategory.Protein:   __result = Lang.Get("foragersgamble:unknown-protein");   return;
+                                    case EnumFoodCategory.Dairy:     __result = Lang.Get("foragersgamble:unknown-dairy");     return;
+                                    default:                         __result = Lang.Get("foragersgamble:unknown-food");      return;
                                 }
                             }
                             return;
@@ -297,26 +295,16 @@ namespace ForagersGamble.Patches
                         }
                     }
                 }
-                if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(___api, itemStack, out var derivedBase) &&
-                    derivedBase != null)
+                if (baseProduce != null && !Knowledge.IsKnown(agent, baseProduce))
                 {
-                    if (!Knowledge.IsKnown(agent, derivedBase))
+                    var dprops = baseProduce.Collectible.GetNutritionProperties(world, baseProduce, agent);
+                    if (dprops != null)
                     {
-                        var dprops = derivedBase.Collectible.GetNutritionProperties(world, derivedBase, agent);
-                        if (dprops != null)
+                        switch (dprops.FoodCategory)
                         {
-                            switch (dprops.FoodCategory)
-                            {
-                                case EnumFoodCategory.Fruit:
-                                    __result = Lang.Get("foragersgamble:unknown-fruit");
-                                    return;
-                                case EnumFoodCategory.Vegetable:
-                                    __result = Lang.Get("foragersgamble:unknown-vegetable");
-                                    return;
-                                case EnumFoodCategory.Grain:
-                                    __result = Lang.Get("foragersgamble:unknown-grain");
-                                    return;
-                            }
+                            case EnumFoodCategory.Fruit:     __result = Lang.Get("foragersgamble:unknown-fruit");     return;
+                            case EnumFoodCategory.Vegetable: __result = Lang.Get("foragersgamble:unknown-vegetable"); return;
+                            case EnumFoodCategory.Grain:     __result = Lang.Get("foragersgamble:unknown-grain");     return;
                         }
                     }
                 }

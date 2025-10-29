@@ -91,6 +91,7 @@ namespace ForagersGamble
     }
     internal static class PlantKnowledgeUtil
     {
+        private static readonly string[] CookStates = { "partbaked", "perfect", "charred" };
         public static bool TryResolveReferenceFruit(ICoreAPI api, CollectibleObject coll, ItemStack heldStack,
             out ItemStack fruitStack)
         {
@@ -122,6 +123,9 @@ namespace ForagersGamble
         {
             baseProduce = null;
             if (api?.World == null || stack?.Collectible == null) return false;
+            var codePath = stack.Collectible.Code?.Path ?? "";
+            if (TryResolveSeedDerivative(api, codePath, out baseProduce))
+                return true;
             var props = stack.Collectible.GetNutritionProperties(api.World, stack, null);
             if (props == null ||
                 props.FoodCategory == EnumFoodCategory.Unknown ||
@@ -129,7 +133,6 @@ namespace ForagersGamble
             {
                 return false;
             }
-            var codePath = stack.Collectible.Code?.Path ?? "";
             if (codePath.StartsWith("fruit-", StringComparison.OrdinalIgnoreCase) ||
                 codePath.StartsWith("vegetable-", StringComparison.OrdinalIgnoreCase) ||
                 codePath.StartsWith("grain-", StringComparison.OrdinalIgnoreCase))
@@ -147,6 +150,12 @@ namespace ForagersGamble
                     variantTok = (dash2 >= 0 ? after.Substring(0, dash2) : after).Trim();
                 }
             }
+
+            if (TryResolveMushroomDerivative(api, codePath, out baseProduce))
+                return true;
+            if (TryResolveVegFruitGrainDerivative(api, codePath, out baseProduce))
+                return true;
+
             if (string.IsNullOrEmpty(variantTok))
             {
                 var pathLower = codePath.ToLowerInvariant();
@@ -170,12 +179,10 @@ namespace ForagersGamble
                         break;
                     }
                 }
+
                 if (string.IsNullOrEmpty(variantTok))
                 {
-                    string[] leading =
-                    {
-                        "juiceportion", "ciderportion", "wineportion", "juice", "cider", "wine"
-                    };
+                    string[] leading = { "juiceportion", "ciderportion", "wineportion", "juice", "cider", "wine" };
                     foreach (var lead in leading)
                     {
                         if (pathLower.StartsWith(lead))
@@ -189,6 +196,7 @@ namespace ForagersGamble
 
             if (string.IsNullOrWhiteSpace(variantTok)) return false;
             variantTok = variantTok.Replace("berries", "berry", StringComparison.OrdinalIgnoreCase);
+
             string familyPrefix;
             switch (props.FoodCategory)
             {
@@ -197,6 +205,7 @@ namespace ForagersGamble
                 case EnumFoodCategory.Vegetable: familyPrefix = "vegetable-"; break;
                 default: return false;
             }
+
             bool TryResolve(string token, out ItemStack result)
             {
                 result = null;
@@ -232,6 +241,7 @@ namespace ForagersGamble
 
                 return false;
             }
+
             if (TryResolve(variantTok, out baseProduce)) return true;
             if (variantTok.EndsWith("berry", StringComparison.OrdinalIgnoreCase))
             {
@@ -501,6 +511,214 @@ namespace ForagersGamble
 
             return false;
         }
+
+        private static bool TryResolveMushroomDerivative(ICoreAPI api, string codePath, out ItemStack baseProduce)
+        {
+            baseProduce = null;
+            if (string.IsNullOrEmpty(codePath)) return false;
+            string[] prefixes =
+            {
+                "cookedmushroom-", "cookedmushroom-",
+                "choppedmushroom-", "choppedmushroom-",
+                "cookedchoppedmushroom-", "cookedchoppedmushroom-"
+            };
+            string[] states = { "partbaked", "perfect", "charred" };
+
+            string matchedPrefix = null;
+            foreach (var pre in prefixes)
+            {
+                if (codePath.StartsWith(pre, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedPrefix = pre;
+                    break;
+                }
+            }
+
+            if (matchedPrefix == null) return false;
+            var after = codePath.Substring(matchedPrefix.Length);
+            var segs = after.Split('-');
+            if (segs.Length == 0) return false;
+            int endExclusive = segs.Length;
+            var last = segs[segs.Length - 1];
+            foreach (var st in states)
+            {
+                if (last.Equals(st, StringComparison.OrdinalIgnoreCase))
+                {
+                    endExclusive = segs.Length - 1;
+                    break;
+                }
+            }
+
+            if (endExclusive <= 0) return false;
+            var mush = string.Join("-", segs, 0, endExclusive);
+            mush = NormalizeProduceToken(mush);
+            if (string.IsNullOrWhiteSpace(mush)) return false;
+
+            var candidates = new[]
+            {
+                new AssetLocation("game", $"mushroom-{mush}-normal"),
+                new AssetLocation("game", $"mushroom-{mush}-normal-north"),
+                new AssetLocation("game", $"mushroom-{mush}")
+            };
+
+            foreach (var al in candidates)
+            {
+                var bl = api.World.GetBlock(al);
+                if (bl != null)
+                {
+                    var test = new ItemStack(bl);
+                    var p2 = bl.GetNutritionProperties(api.World, test, null);
+                    if (p2 != null && p2.FoodCategory != EnumFoodCategory.Unknown &&
+                        p2.FoodCategory != EnumFoodCategory.NoNutrition)
+                    {
+                        baseProduce = test;
+                        return true;
+                    }
+                }
+
+                var it = api.World.GetItem(al);
+                if (it != null)
+                {
+                    var test = new ItemStack(it);
+                    var p2 = it.GetNutritionProperties(api.World, test, null);
+                    if (p2 != null && p2.FoodCategory != EnumFoodCategory.Unknown &&
+                        p2.FoodCategory != EnumFoodCategory.NoNutrition)
+                    {
+                        baseProduce = test;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveVegFruitGrainDerivative(ICoreAPI api, string codePath, out ItemStack baseProduce)
+        {
+            baseProduce = null;
+            if (string.IsNullOrEmpty(codePath)) return false;
+            if (codePath.StartsWith("cookedveggie-", StringComparison.OrdinalIgnoreCase) ||
+                codePath.StartsWith("choppedveggie-", StringComparison.OrdinalIgnoreCase) ||
+                codePath.StartsWith("cookedchoppedveggie-", StringComparison.OrdinalIgnoreCase) ||
+                codePath.StartsWith("cookedvegetable-", StringComparison.OrdinalIgnoreCase) ||
+                codePath.StartsWith("choppedvegetable-", StringComparison.OrdinalIgnoreCase) ||
+                codePath.StartsWith("cookedchoppedvegetable-", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = codePath.Split('-');
+                if (parts.Length >= 2)
+                {
+                    var endExclusive = parts.Length;
+
+                    var last = parts[^1];
+                    foreach (var st in CookStates)
+                        if (last.Equals(st, StringComparison.OrdinalIgnoreCase)) { endExclusive--; break; }
+
+                    var vegJoined = string.Join("-", parts, 1, Math.Max(0, endExclusive - 1));
+                    vegJoined = StripLeadingProcessWord(vegJoined);
+
+                    var veg = NormalizeProduceToken(vegJoined);
+                    return TryMakeBase(api, "vegetable-", veg, out baseProduce);
+                }
+                return false;
+            }
+            if (codePath.StartsWith("dryfruit-", StringComparison.OrdinalIgnoreCase) || codePath.StartsWith("dehydratedfruit-", StringComparison.OrdinalIgnoreCase) || codePath.StartsWith("pressedmash-", StringComparison.OrdinalIgnoreCase) ||
+                codePath.StartsWith("candiedfruit-", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = codePath.Split('-');
+                if (parts.Length >= 2)
+                {
+                    var fr = parts[1];
+                    return TryMakeBase(api, "fruit-", fr, out baseProduce);
+                }
+                return false;
+            }
+            string[] fruitLiquidRoots  = { "juice", "cider", "wine", "juiceportion", "vegetablejuiceportion", "ciderportion", "fruitsyrupportion", "yogurt", "wineportion", "foodoilportion", "potentwineportion", "potentspiritportion", "strongspiritportion", "strongwineportion" };
+            foreach (var root in fruitLiquidRoots)
+            {
+                if (codePath.StartsWith(root + "-", StringComparison.OrdinalIgnoreCase))
+                {
+                    var token = codePath.Substring(root.Length).TrimStart('-').TrimEnd('-', '_', '.');
+                    if (!string.IsNullOrWhiteSpace(token))
+                        return TryMakeBase(api, "fruit-", token, out baseProduce);
+                }
+                if (codePath.EndsWith(root, StringComparison.OrdinalIgnoreCase))
+                {
+                    var token = codePath.Substring(0, codePath.Length - root.Length).TrimEnd('-', '_', '.');
+                    if (!string.IsNullOrWhiteSpace(token))
+                        return TryMakeBase(api, "fruit-", token, out baseProduce);
+                }
+            }
+            string[] grainLeading = { "mash", "wort", "beer" };
+            foreach (var lead in grainLeading)
+            {
+                if (codePath.StartsWith(lead + "-", StringComparison.OrdinalIgnoreCase))
+                {
+                    var token = codePath.Substring(lead.Length).TrimStart('-').TrimEnd('-', '_', '.');
+                    if (!string.IsNullOrWhiteSpace(token))
+                        return TryMakeBase(api, "grain-", token, out baseProduce);
+                }
+            }
+            string[] grainProcess = { "dough", "porridge", "flour" };
+            foreach (var gp in grainProcess)
+            {
+                if (codePath.StartsWith(gp + "-", StringComparison.OrdinalIgnoreCase))
+                {
+                    var token = codePath.Substring(gp.Length).TrimStart('-').TrimEnd('-', '_', '.');
+                    if (!string.IsNullOrWhiteSpace(token))
+                        return TryMakeBase(api, "grain-", token, out baseProduce);
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveSeedDerivative(ICoreAPI api, string codePath, out ItemStack baseProduce)
+        {
+            baseProduce = null;
+            if (string.IsNullOrEmpty(codePath)) return false;
+            if (!codePath.StartsWith("seeds-", StringComparison.OrdinalIgnoreCase)) return false;
+            var type = codePath.Substring("seeds-".Length).Trim('-', '_', '.');
+            if (string.IsNullOrWhiteSpace(type)) return false;
+            var grains = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "spelt", "rye", "rice", "amaranth" };
+
+            var prefix = grains.Contains(type) ? "grain-" : "vegetable-";
+
+            return TryMakeBase(api, prefix, type, out baseProduce);
+        }
+        private static bool TryMakeBase(ICoreAPI api, string familyPrefix, string token, out ItemStack stack)
+        {
+            stack = null;
+            if (api?.World == null || string.IsNullOrWhiteSpace(familyPrefix) || string.IsNullOrWhiteSpace(token))
+                return false;
+
+            var al = new AssetLocation("game", familyPrefix + token);
+
+            var it = api.World.GetItem(al);
+            if (it != null)
+            {
+                var test = new ItemStack(it);
+                var p = it.GetNutritionProperties(api.World, test, null);
+                if (p != null && p.FoodCategory != EnumFoodCategory.Unknown &&
+                    p.FoodCategory != EnumFoodCategory.NoNutrition)
+                {
+                    stack = test; return true;
+                }
+            }
+
+            var bl = api.World.GetBlock(al);
+            if (bl != null)
+            {
+                var test = new ItemStack(bl);
+                var p = bl.GetNutritionProperties(api.World, test, null);
+                if (p != null && p.FoodCategory != EnumFoodCategory.Unknown &&
+                    p.FoodCategory != EnumFoodCategory.NoNutrition)
+                {
+                    stack = test; return true;
+                }
+            }
+            return false;
+        }
         public static string ClassifyUnknownKey(Block block)
         {
             if (block is BlockBerryBush) return "foragersgamble:unknown-berrybush";
@@ -566,6 +784,42 @@ namespace ForagersGamble
                 return true;
             }
             return false;
+        }
+        private static string NormalizeProduceToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token)) return token;
+            token = token.Trim('-', '_', '.');
+            if (token.Equals("tomatoes", StringComparison.OrdinalIgnoreCase)) return "tomato";
+            if (token.Equals("potatoes", StringComparison.OrdinalIgnoreCase)) return "potato";
+            token = token.Replace("berries", "berry", StringComparison.OrdinalIgnoreCase);
+            if (token.EndsWith("s", StringComparison.OrdinalIgnoreCase) &&
+                !token.EndsWith("ss", StringComparison.OrdinalIgnoreCase))
+            {
+                token = token.Substring(0, token.Length - 1);
+            }
+
+            return token;
+        }
+        private static readonly string[] ProcessLeads =
+        {
+            "pickled", "candied", "dried", "stewed", "baked", "roasted",
+            "fermented", "puree", "pureed", "paste", "mash", "sliced", "slice",
+            "chopped", "diced", "cooked", "raw", "fresh"
+        };
+
+        private static string StripLeadingProcessWord(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token)) return token;
+            token = token.Trim('-', '_', '.');
+            foreach (var lead in ProcessLeads)
+            {
+                if (token.StartsWith(lead, StringComparison.OrdinalIgnoreCase))
+                {
+                    var rest = token.Substring(lead.Length);
+                    return string.IsNullOrWhiteSpace(rest) ? token : rest.Trim('-', '_', '.');
+                }
+            }
+            return token;
         }
     }
 }
