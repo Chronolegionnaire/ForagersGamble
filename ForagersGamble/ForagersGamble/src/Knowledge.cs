@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using ForagersGamble.Config;
 using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
+using Vintagestory.GameContent;
 
 namespace ForagersGamble
 {
@@ -15,6 +17,201 @@ namespace ForagersGamble
         public static float GetProgress(EntityAgent entity, ItemStack stack)
             => GetProgress(entity, ItemKey(stack));
 
+        
+        private static HashSet<string> s_unknownUniverse;
+
+        public static void BuildUnknownUniverse(ICoreAPI api, PlantKnowledgeIndex idx)
+        {
+            var cfg = ModConfig.Instance?.Main;
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (idx != null)
+            {
+                foreach (var bl in api.World.Blocks)
+                {
+                    if (bl?.Code == null) continue;
+                    var code = bl.Code.ToString();
+                    if (idx.IsMushroom(code))
+                    {
+                        set.Add(code);
+                        set.Add(Norm(code));
+                    }
+                }
+            }
+            foreach (var bl in api.World.Blocks)
+            {
+                if (bl?.Code == null) continue;
+
+                if (PlantKnowledgeUtil.IsKnowledgeGatedPlant(bl, api))
+                {
+                    var bcode = bl.Code.ToString();
+                    set.Add(bcode);
+                    set.Add(Norm(bcode));
+
+                    if (PlantKnowledgeUtil.TryResolveReferenceFruit(api, bl, new ItemStack(bl), out var fruit))
+                    {
+                        var fcode = fruit.Collectible?.Code?.ToString();
+                        if (!string.IsNullOrEmpty(fcode))
+                        {
+                            set.Add(fcode);
+                            set.Add(Norm(fcode));
+                        }
+                    }
+                }
+            }
+            foreach (var coll in api.World.Collectibles)
+            {
+                if (coll?.Code == null) continue;
+                if (coll is BlockSapling) continue;
+                if (coll is BlockLiquidContainerTopOpened) continue;
+                if (coll is BlockLiquidContainerBase) continue;
+                if (coll is BlockPlant flowerBlk)
+                {
+                    var p = flowerBlk.Code?.Path ?? "";
+                    bool looksLikeFlower = p.StartsWith("flower-", StringComparison.OrdinalIgnoreCase)
+                                           || p.Contains("-flower-", StringComparison.OrdinalIgnoreCase);
+                    var attrs = flowerBlk.Attributes;
+                    bool hasNutritionProps = (attrs?["NutritionProps"]?.Exists ?? false)
+                                             || (attrs?["nutritionProps"]?.Exists ?? false);
+                    if (looksLikeFlower && !hasNutritionProps)
+                        continue;
+                }
+
+                ItemStack stack;
+                try
+                {
+                    stack = new ItemStack(coll);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var baseProduce))
+                    {
+                        var selfCode = coll.Code.ToString();
+                        set.Add(selfCode);
+                        set.Add(Norm(selfCode));
+
+                        var baseCode = baseProduce.Collectible?.Code?.ToString();
+                        if (!string.IsNullOrEmpty(baseCode))
+                        {
+                            set.Add(baseCode);
+                            set.Add(Norm(baseCode));
+                        }
+                    }
+                }
+                catch
+                {
+                }
+            }
+            if (cfg?.UnknownAll == true || cfg?.UnknownPlants == true || cfg?.UnknownMushrooms == true)
+            {
+                foreach (var coll in api.World.Collectibles)
+                {
+                    if (coll?.Code == null) continue;
+
+                    var hasLiquidAttr = coll.Attributes?["waterTightContainerProps"]?.Exists == true;
+                    if (!hasLiquidAttr) continue;
+
+                    ItemStack stack;
+                    try
+                    {
+                        stack = new ItemStack(coll);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    FoodNutritionProperties props = null;
+                    try
+                    {
+                        props = coll.GetNutritionProperties(api.World, stack, null);
+                    }
+                    catch
+                    {
+                    }
+
+                    if (props != null &&
+                        props.FoodCategory != EnumFoodCategory.Unknown &&
+                        props.FoodCategory != EnumFoodCategory.NoNutrition)
+                    {
+                        var selfCode = coll.Code.ToString();
+                        set.Add(selfCode);
+                        set.Add(Norm(selfCode));
+                    }
+
+                    try
+                    {
+                        if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var baseProduce))
+                        {
+                            var baseCode = baseProduce.Collectible?.Code?.ToString();
+                            if (!string.IsNullOrEmpty(baseCode))
+                            {
+                                set.Add(baseCode);
+                                set.Add(Norm(baseCode));
+                            }
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            if (cfg?.UnknownAll == true)
+            {
+                foreach (var coll in api.World.Collectibles)
+                {
+                    if (coll?.Code == null) continue;
+
+                    ItemStack stack;
+                    try
+                    {
+                        stack = new ItemStack(coll);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    FoodNutritionProperties props = null;
+                    try
+                    {
+                        props = coll.GetNutritionProperties(api.World, stack, null);
+                    }
+                    catch
+                    {
+                    }
+
+                    if (props != null &&
+                        props.FoodCategory != EnumFoodCategory.Unknown &&
+                        props.FoodCategory != EnumFoodCategory.NoNutrition)
+                    {
+                        var c = coll.Code.ToString();
+                        set.Add(c);
+                        set.Add(Norm(c));
+                    }
+                }
+            }
+
+            s_unknownUniverse = set;
+        }
+
+        private static string Norm(string code)
+        {
+            if (string.IsNullOrEmpty(code)) return code;
+            var slash = code.IndexOf('/');
+            return slash > 0 ? code.Substring(0, slash) : code;
+        }
+
+        public static bool IsInUnknownUniverse(string code)
+        {
+            return !string.IsNullOrEmpty(code)
+                   && s_unknownUniverse != null
+                   && s_unknownUniverse.Contains(code);
+        }
         public static float GetProgress(EntityAgent entity, string code)
         {
             if (entity == null || string.IsNullOrEmpty(code)) return 0f;
@@ -78,11 +275,29 @@ namespace ForagersGamble
             wat.SetAttribute(AttrRoot, root);
             player.Entity.Attributes.MarkPathDirty(AttrRoot);
         }
+        private static bool IsSaplingCode(string code)
+        {
+            if (string.IsNullOrWhiteSpace(code)) return false;
+            int colon = code.IndexOf(':');
+            var path = colon >= 0 ? code.Substring(colon + 1) : code;
+
+            return path.StartsWith("sapling-", StringComparison.OrdinalIgnoreCase);
+        }
         public static bool IsKnown(EntityAgent entity, ItemStack stack)
             => IsKnown(entity, ItemKey(stack));
 
         public static bool IsKnown(EntityAgent entity, string code)
-            => GetProgress(entity, code) >= 1f;
+        {
+            if (string.IsNullOrEmpty(code))
+                return false;
+            if (IsSaplingCode(code))
+                return true;
+
+            if (!IsInUnknownUniverse(code))
+                return true;
+
+            return GetProgress(entity, code) >= 1f;
+        }
         
         public static void MarkKnown(EntityAgent entity, ItemStack stack)
         {

@@ -92,6 +92,25 @@ namespace ForagersGamble
     internal static class PlantKnowledgeUtil
     {
         private static readonly string[] CookStates = { "partbaked", "perfect", "charred" };
+        internal static readonly HashSet<string> StageWords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "ripe", "unripe", "empty", "flowering", "flower", "immature", "mature", "harvested",
+            "small", "medium", "large", "stage", "young", "old", "branch", "foliage", "leaves", "leaf", "trunk"
+        };
+
+        internal static readonly HashSet<string> ColorWords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "white", "black", "gray", "grey", "lightgray", "darkgray", "red", "orange", "yellow", "green",
+            "blue", "teal", "cyan", "aqua", "purple", "violet", "magenta", "pink", "brown", "beige", "tan"
+        };
+
+        internal static readonly HashSet<string> MaterialWords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "tile", "claytile", "brick", "plank", "wood", "stone", "granite", "basalt", "limestone", "sandstone",
+            "metal", "copper", "tin", "bronze", "iron", "steel", "cloth", "linen", "wool", "glass", "paper"
+        };
+
+
         public static bool TryResolveReferenceFruit(ICoreAPI api, CollectibleObject coll, ItemStack heldStack,
             out ItemStack fruitStack)
         {
@@ -123,6 +142,8 @@ namespace ForagersGamble
         {
             baseProduce = null;
             if (api?.World == null || stack?.Collectible == null) return false;
+            if (stack.Block is BlockSapling)
+                return false;
             var codePath = stack.Collectible.Code?.Path ?? "";
             if (TryResolveSeedDerivative(api, codePath, out baseProduce))
                 return true;
@@ -356,7 +377,15 @@ namespace ForagersGamble
             var domain = block.Code.Domain ?? "game";
             var path = block.Code.Path ?? "";
             var stageWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                { "ripe", "unripe", "empty", "flowering", "flower", "immature", "mature", "harvested", "small", "medium", "large", "stage", "young", "old" };
+            {
+                "ripe", "unripe", "empty", "flowering", "flower", "immature", "mature",
+                "harvested", "small", "medium", "large", "stage", "young", "old",
+                "branch", "foliage", "leaves", "leaf", "trunk",
+                "unstable", "permanent",
+                "slow", "fast",
+                "rust", "fire", "water", "wind", "earth", "lightning", "frost", "nature", "arcane",
+                "free", "snow"
+            };
 
             var tokens = path.Split('-');
             var candidates = new List<string>();

@@ -40,6 +40,7 @@ public class ForagersGambleModSystem : ModSystem
 		base.AssetsFinalize(api);
 		var idx = PlantKnowledgeIndex.Build(api);
 		PlantKnowledgeIndex.Put(api, idx);
+		Knowledge.BuildUnknownUniverse(api, idx);
 		if (api.Side == EnumAppSide.Client) return;
 
 		if (Config.ModConfig.Instance.Main.PoisonOnset)

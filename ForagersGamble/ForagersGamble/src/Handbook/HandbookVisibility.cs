@@ -31,28 +31,50 @@ internal static class HandbookVisibility
         foreach (var st in stacks)
         {
             if (st == null || st.Collectible == null) continue;
-
             if (st.Block is BlockLiquidContainerTopOpened) continue;
 
             var coll = st.Collectible;
 
             var hasLiquidPropsAttr = coll.Attributes?["waterTightContainerProps"]?.Exists == true;
             bool hasLiquidPropsHelper = false;
-            try { hasLiquidPropsHelper = BlockLiquidContainerBase.GetContainableProps(st) != null; } catch { }
+            try
+            {
+                hasLiquidPropsHelper = BlockLiquidContainerBase.GetContainableProps(st) != null;
+            }
+            catch
+            {
+            }
 
             var selfProps = coll.GetNutritionProperties(world, st, player);
             bool selfEdible = IsEdible(selfProps);
+            bool IsUnknownUniverse(ItemStack s)
+            {
+                if (s == null) return false;
+                var k = ForagersGamble.Knowledge.ItemKey(s);
+                return !string.IsNullOrEmpty(k) && ForagersGamble.Knowledge.IsInUnknownUniverse(k);
+            }
+
+            bool IsUnknownUniverseCode(string code)
+            {
+                return !string.IsNullOrEmpty(code) && ForagersGamble.Knowledge.IsInUnknownUniverse(code);
+            }
 
             if (hasLiquidPropsAttr || hasLiquidPropsHelper)
             {
                 if (selfEdible)
                 {
-                    if (!ForagersGamble.Knowledge.IsKnown(player, st)) return true;
+                    if (!ForagersGamble.Knowledge.IsKnown(player, st))
+                    {
+                        if (!IsUnknownUniverse(st))
+                            return true;
+                    }
+
                     continue;
                 }
 
                 ItemStack parent = null;
-                if (!ForagersGamble.PlantKnowledgeUtil.TryResolveBaseProduceFromItem(capi, st, out var baseProduce) || baseProduce == null)
+                if (!ForagersGamble.PlantKnowledgeUtil.TryResolveBaseProduceFromItem(capi, st, out var baseProduce) ||
+                    baseProduce == null)
                 {
                     parent = TryResolveEdibleCounterpart(capi, idx, coll, st, player);
                 }
@@ -60,7 +82,12 @@ internal static class HandbookVisibility
 
                 if (parent != null)
                 {
-                    if (!ForagersGamble.Knowledge.IsKnown(player, parent)) return true;
+                    if (!ForagersGamble.Knowledge.IsKnown(player, parent))
+                    {
+                        if (!IsUnknownUniverse(parent))
+                            return true;
+                    }
+
                     continue;
                 }
 
@@ -69,7 +96,12 @@ internal static class HandbookVisibility
 
             if (selfEdible)
             {
-                if (!ForagersGamble.Knowledge.IsKnown(player, st)) return true;
+                if (!ForagersGamble.Knowledge.IsKnown(player, st))
+                {
+                    if (!IsUnknownUniverse(st))
+                        return true;
+                }
+
                 continue;
             }
 
@@ -79,11 +111,15 @@ internal static class HandbookVisibility
                 var bcode = asBlock.Code?.ToString() ?? "";
                 if (!string.IsNullOrEmpty(bcode) && idx.IsKnowledgeGated(bcode))
                 {
-                    if (ForagersGamble.PlantKnowledgeUtil.TryResolveReferenceFruit(capi, asBlock, new ItemStack(asBlock), out var fruitRef))
+                    if (ForagersGamble.PlantKnowledgeUtil.TryResolveReferenceFruit(capi, asBlock,
+                            new ItemStack(asBlock), out var fruitRef))
                     {
                         var fprops = fruitRef?.Collectible?.GetNutritionProperties(world, fruitRef, player);
                         if (IsEdible(fprops) && !ForagersGamble.Knowledge.IsKnown(player, fruitRef))
-                            return true;
+                        {
+                            if (!IsUnknownUniverse(fruitRef) && !IsUnknownUniverseCode(bcode))
+                                return true;
+                        }
                     }
                 }
             }
@@ -100,19 +136,23 @@ internal static class HandbookVisibility
             TryField("forStack");
             TryField("primaryStack");
             TryField("outputStack");
-            TryField("recipe");
             TryProp("Stack");
             TryProp("ItemStack");
             TryProp("DisplayStack");
             TryProp("OutputStack");
-            foreach (var f in p.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (var f in p.GetType().GetFields(System.Reflection.BindingFlags.Instance |
+                                                    System.Reflection.BindingFlags.Public |
+                                                    System.Reflection.BindingFlags.NonPublic))
             {
                 if (f.FieldType == typeof(ItemStack)) Add((ItemStack)f.GetValue(p));
                 else if (f.FieldType.Name == "JsonItemStack") TryJson(f.GetValue(p));
             }
+
             void TryField(string name)
             {
-                var f = p.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
+                var f = p.GetType().GetField(name,
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.IgnoreCase);
                 if (f == null) return;
                 var v = f.GetValue(p);
                 if (v is ItemStack st) Add(st);
@@ -121,34 +161,48 @@ internal static class HandbookVisibility
                 else if (v?.GetType().Name == "JsonItemStack")
                     TryJson(v);
             }
+
             void TryProp(string name)
             {
-                var pr = p.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
+                var pr = p.GetType().GetProperty(name,
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.IgnoreCase);
                 if (pr == null) return;
                 var v = pr.GetValue(p);
                 if (v is ItemStack st) Add(st);
                 else if (v?.GetType().Name == "JsonItemStack")
                     TryJson(v);
             }
+
             void TryJson(object jis)
             {
                 var worldLocal = capi.World;
-                var resolve = jis?.GetType().GetMethod("Resolve", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                var resolve = jis?.GetType().GetMethod("Resolve",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic);
                 resolve?.Invoke(jis, new object[] { worldLocal, "ForagersGamble handbook filter" });
 
-                var prop = jis?.GetType().GetProperty("ResolvedItemstack", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                var prop = jis?.GetType().GetProperty("ResolvedItemstack",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic);
                 if (prop?.GetValue(jis) is ItemStack st) Add(st);
             }
+
             void TryRecipe(object recipe)
             {
-                var outProp = recipe.GetType().GetProperty("Output", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                              ?? recipe.GetType().GetProperty("OutputStack", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                var outProp = recipe.GetType().GetProperty("Output",
+                                  System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+                                  System.Reflection.BindingFlags.NonPublic)
+                              ?? recipe.GetType().GetProperty("OutputStack",
+                                  System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+                                  System.Reflection.BindingFlags.NonPublic);
                 if (outProp == null) return;
 
                 var outVal = outProp.GetValue(recipe);
                 if (outVal is ItemStack st) Add(st);
                 else if (outVal?.GetType().Name == "JsonItemStack") TryJson(outVal);
             }
+
             void Add(ItemStack st)
             {
                 if (st != null) list.Add(st.Clone());
@@ -157,6 +211,7 @@ internal static class HandbookVisibility
             return list.DistinctBy(s => s.Collectible?.Code?.ToString() ?? "").ToArray();
         }
     }
+
     private static ItemStack TryResolveEdibleCounterpart(ICoreClientAPI api, ForagersGamble.PlantKnowledgeIndex idx,
         CollectibleObject coll, ItemStack stack, EntityPlayer agent)
     {
