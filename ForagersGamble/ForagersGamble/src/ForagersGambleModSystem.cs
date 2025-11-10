@@ -2,6 +2,7 @@
 using ForagersGamble.Behaviors;
 using ForagersGamble.Config;
 using ForagersGamble.KnowledgeBooks;
+using ForagersGamble.Patches;
 using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using Vintagestory.API.Client;
@@ -25,7 +26,7 @@ public class ForagersGambleModSystem : ModSystem
 		if (!Harmony.HasAnyPatches(HarmonyID))
 		{
 			harmony = new Harmony(HarmonyID);
-            
+			CulinaryArtilleryCompat.TryApplyHarmony(api, harmony);
 			harmony.PatchAllUncategorized();
 		}
 	}
