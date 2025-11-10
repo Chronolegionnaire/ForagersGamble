@@ -30,6 +30,7 @@ namespace ForagersGamble.Patches
 
             var becontainer = world.BlockAccessor.GetBlockEntity(pos) as BlockEntityContainer;
             if (becontainer == null) return;
+
             var mGetCurrentLitres = AccessTools.DeclaredMethod(
                 typeof(BlockLiquidContainerBase),
                 "GetCurrentLitres",
@@ -41,6 +42,7 @@ namespace ForagersGamble.Patches
                 new[] { typeof(BlockPos) }
             );
             if (mGetCurrentLitres == null || mGetContainerSlotId == null) return;
+
             float litres = (float)mGetCurrentLitres.Invoke(__instance, new object[] { pos });
             if (litres <= 0f) return;
 
@@ -48,37 +50,45 @@ namespace ForagersGamble.Patches
             var slot = becontainer.Inventory[slotId];
             var content = slot?.Itemstack;
             if (content == null || !IsLiquid(content)) return;
+
             ItemStack parent = null;
             if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, content, out var baseProduce) && baseProduce != null)
                 parent = baseProduce;
             else
                 parent = Patch_CollectibleObject_GetHeldItemName
                     .TryResolveEdibleCounterpart(api, PlantKnowledgeIndex.Get(api), content.Collectible, content, agent);
-            if (!(parent != null && !Knowledge.IsKnown(agent, parent))) return;
 
-            var sb = new StringBuilder();
-            sb.AppendLine(Lang.Get("Contents:", Array.Empty<object>()));
-            sb.AppendLine(" " + Lang.Get("{0} litres of {1}", new object[]
+            if (Knowledge.IsKnown(agent, content))
             {
-                litres,
-                Lang.Get("foragersgamble:unknown-liquid")
-            }));
-
-            var perishableInfo = BlockLiquidContainerBase.PerishableInfoCompact(api, slot, 0f, false);
-            if (perishableInfo.Length > 2) sb.AppendLine(perishableInfo.Substring(2));
-            var header = Lang.Get("Contents:", Array.Empty<object>());
-            var original = __result ?? "";
-            int idx = original.IndexOf(header, StringComparison.Ordinal);
-            if (idx >= 0)
-            {
-                int afterHeader = idx + header.Length;
-                int nextBlank = original.IndexOf("\n\n", afterHeader, StringComparison.Ordinal);
-                string tail = nextBlank >= 0 ? original.Substring(nextBlank + 2) : "";
-                __result = sb + tail;
+                return;
             }
-            else
+            if (parent != null && !Knowledge.IsKnown(agent, parent))
             {
-                __result = sb + original;
+                var sb = new StringBuilder();
+                sb.AppendLine(Lang.Get("Contents:", Array.Empty<object>()));
+                sb.AppendLine(" " + Lang.Get("{0} litres of {1}", new object[]
+                {
+                    litres,
+                    Lang.Get("foragersgamble:unknown-liquid")
+                }));
+
+                var perishableInfo = BlockLiquidContainerBase.PerishableInfoCompact(api, slot, 0f, false);
+                if (perishableInfo.Length > 2) sb.AppendLine(perishableInfo.Substring(2));
+
+                var header = Lang.Get("Contents:", Array.Empty<object>());
+                var original = __result ?? "";
+                int idx = original.IndexOf(header, StringComparison.Ordinal);
+                if (idx >= 0)
+                {
+                    int afterHeader = idx + header.Length;
+                    int nextBlank = original.IndexOf("\n\n", afterHeader, StringComparison.Ordinal);
+                    string tail = nextBlank >= 0 ? original.Substring(nextBlank + 2) : "";
+                    __result = sb + tail;
+                }
+                else
+                {
+                    __result = sb + original;
+                }
             }
         }
     }

@@ -7,6 +7,7 @@ using ForagersGamble.Config;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
+using Vintagestory.GameContent;
 
 namespace ForagersGamble.Patches
 {
@@ -150,7 +151,17 @@ namespace ForagersGamble.Patches
             if (agent == null || stack == null) return;
             if (!MaskingAllowed(agent)) return;
             if (!InSurvival(agent)) return;
+            if (stack.Collectible is BlockLiquidContainerBase blc)
+            {
+                var content = blc.GetContent(stack);
+                if (content != null)
+                {
+                    stack = content;
+                }
+            }
+
             if (!IsActuallyEdible(stack, world, agent)) return;
+
             float prog = Knowledge.GetProgress(agent, stack);
             if (prog >= 0.9999f) return;
             int pct = Math.Max(0, Math.Min(99, (int)Math.Round(prog * 100f)));

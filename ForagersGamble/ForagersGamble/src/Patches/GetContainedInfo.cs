@@ -20,7 +20,6 @@ namespace ForagersGamble.Patches
         static void Postfix(BlockLiquidContainerTopOpened __instance, ItemSlot inSlot, ref string __result)
         {
             if (NameMaskingScope.IsActive) return;
-
             if (inSlot?.Itemstack == null || string.IsNullOrEmpty(__result)) return;
 
             var apiField = AccessTools.Field(typeof(Block), "api");
@@ -49,12 +48,19 @@ namespace ForagersGamble.Patches
 
             ItemStack parent = null;
             if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, content, out var baseProduce) && baseProduce != null)
+            {
                 parent = baseProduce;
+            }
             else
+            {
                 parent = Patch_CollectibleObject_GetHeldItemName
                     .TryResolveEdibleCounterpart(api, PlantKnowledgeIndex.Get(api), content.Collectible, content, agent);
+            }
 
-            if (parent != null && !Knowledge.IsKnown(agent, parent))
+            bool parentUnknown = parent != null && !Knowledge.IsKnown(agent, parent);
+            bool liquidUnknown = !Knowledge.IsKnown(agent, content);
+
+            if (parentUnknown && liquidUnknown)
             {
                 var containerName = inSlot.Itemstack.GetName();
 

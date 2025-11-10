@@ -61,11 +61,20 @@ namespace ForagersGamble.Patches
                     parent = Patch_CollectibleObject_GetHeldItemName
                         .TryResolveEdibleCounterpart(api, PlantKnowledgeIndex.Get(api), content.Collectible, content, agent);
 
-                nameToken = (parent != null && !Knowledge.IsKnown(agent, parent))
-                    ? Lang.Get("foragersgamble:unknown-liquid")
-                    : Lang.Get(content.Collectible.Code.Domain + ":incontainer-" +
-                               content.Class.ToString().ToLowerInvariant() + "-" +
-                               content.Collectible.Code.Path);
+                bool parentUnknown = parent != null && !Knowledge.IsKnown(agent, parent);
+                bool liquidUnknown = !Knowledge.IsKnown(agent, content);
+                if (parentUnknown && liquidUnknown)
+                {
+                    nameToken = Lang.Get("foragersgamble:unknown-liquid");
+                }
+                else
+                {
+                    nameToken = Lang.Get(
+                        content.Collectible.Code.Domain + ":incontainer-" +
+                        content.Class.ToString().ToLowerInvariant() + "-" +
+                        content.Collectible.Code.Path
+                    );
+                }
             }
             else
             {

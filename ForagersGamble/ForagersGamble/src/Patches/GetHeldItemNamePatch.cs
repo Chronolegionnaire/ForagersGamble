@@ -126,7 +126,7 @@ namespace ForagersGamble.Patches
                 bool selfEdible = IsEdible(selfProps);
                 ItemStack parent = baseProduce ??
                                    TryResolveEdibleCounterpart(___api, idx, __instance, itemStack, agent);
-                if (selfEdible)
+                if (selfEdible && !Knowledge.IsKnown(agent, itemStack))
                 {
                     __result = Lang.Get("foragersgamble:unknown-liquid");
                     return;

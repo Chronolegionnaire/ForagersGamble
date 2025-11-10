@@ -176,45 +176,60 @@ namespace ForagersGamble.Patches
 
     [HarmonyPatch(typeof(BlockLiquidContainerBase), "tryEatStop",
         new Type[] { typeof(float), typeof(ItemSlot), typeof(EntityAgent) })]
-    [HarmonyPriority(Priority.First)]
+    [HarmonyPriority(HarmonyLib.Priority.First)]
     public static class Patch_LiquidContainer_TryEatStop_Knowledge
     {
         static void Postfix(float secondsUsed, ItemSlot slot, EntityAgent byEntity, BlockLiquidContainerBase __instance)
         {
             try
             {
-                bool shouldProcess = byEntity?.World is IServerWorldAccessor && secondsUsed >= 0.95f;
+                if (byEntity?.World is not IServerWorldAccessor) return;
+                if (secondsUsed < 0.95f) return;
 
-                if (shouldProcess)
+                var wat = byEntity.WatchedAttributes;
+                var root = wat?.GetTreeAttribute(NibbleLiquidKeys.AttrRoot);
+                bool wasNibble = root?.GetBool(NibbleLiquidKeys.NibbleIntent, false) ?? false;
+                ItemStack consumed = null;
+                if (slot?.Itemstack != null && __instance != null)
+                    consumed = __instance.GetContent(slot.Itemstack);
+                string key = wat?.GetString(NibbleLiquidKeys.LastEatItemKey, null);
+                if (string.IsNullOrEmpty(key))
                 {
-                    var wat = byEntity.WatchedAttributes;
-                    var root = wat?.GetTreeAttribute(NibbleLiquidKeys.AttrRoot);
-                    bool wasNibble = root?.GetBool(NibbleLiquidKeys.NibbleIntent, false) ?? false;
-                    ItemStack consumed = null;
-                    if (slot?.Itemstack != null && __instance != null)
-                        consumed = __instance.GetContent(slot.Itemstack);
+                    if (consumed != null)
+                        key = Knowledge.ItemKey(consumed);
+                    else if (slot?.Itemstack != null)
+                        key = Knowledge.ItemKey(slot.Itemstack);
+                }
 
-                    string key = wat?.GetString(NibbleLiquidKeys.LastEatItemKey, null);
-                    if (string.IsNullOrEmpty(key))
+                bool justDiscovered = false;
+                bool liquidIsKnown = false;
+
+                if (!string.IsNullOrEmpty(key))
+                {
+                    var cfg = ModConfig.Instance?.Main;
+                    float amt = Math.Max(0f, Math.Min(1f, cfg?.LearnAmountPerEat ?? 0.20f));
+                    bool isGated = Knowledge.IsInUnknownUniverse(key);
+
+                    if (amt > 0f && isGated)
                     {
-                        if (consumed != null)
-                            key = Knowledge.ItemKey(consumed);
-                        else if (slot?.Itemstack != null)
-                            key = Knowledge.ItemKey(slot.Itemstack);
+                        justDiscovered = Knowledge.AddProgress(byEntity, key, amt);
+                        if (justDiscovered)
+                        {
+                            Knowledge.MarkDiscovered(byEntity, key);
+                        }
+
+                        liquidIsKnown = justDiscovered || Knowledge.IsKnown(byEntity, key);
                     }
+                    else
+                    {
+                        liquidIsKnown = Knowledge.IsKnown(byEntity, key);
+                    }
+                }
+                if (justDiscovered)
+                {
                     if (!string.IsNullOrEmpty(key))
                     {
-                        var cfg = ModConfig.Instance?.Main;
-                        float amt = Math.Max(0f, Math.Min(1f, cfg?.LearnAmountPerEat ?? 0.20f));
-
-                        if (amt > 0f)
-                        {
-                            bool nowDiscovered = Knowledge.AddProgress(byEntity, key, amt);
-                            if (nowDiscovered)
-                            {
-                                Knowledge.MarkDiscovered(byEntity, key);
-                            }
-                        }
+                        Knowledge.MarkKnown(byEntity, key);
                     }
                     if (consumed != null && __instance != null)
                     {
@@ -228,14 +243,14 @@ namespace ForagersGamble.Patches
                             Knowledge.MarkKnown(byEntity, baseProduce);
                         }
                     }
-                    if (wasNibble && slot?.Itemstack != null)
+                }
+                if (wasNibble && slot?.Itemstack != null)
+                {
+                    float factor = ModConfig.Instance.Main.NibbleFactor;
+                    float deltaMul = factor - 1f;
+                    if (Math.Abs(deltaMul) > 0f)
                     {
-                        float factor = ModConfig.Instance.Main.NibbleFactor;
-                        float deltaMul = factor - 1f;
-                        if (Math.Abs(deltaMul) > 0f)
-                        {
-                            HodCompat.TryApplyHydration(byEntity, slot.Itemstack, deltaMul);
-                        }
+                        HodCompat.TryApplyHydration(byEntity, slot.Itemstack, deltaMul);
                     }
                 }
             }
