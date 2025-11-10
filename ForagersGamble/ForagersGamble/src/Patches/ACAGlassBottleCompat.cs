@@ -12,7 +12,7 @@ using ForagersGamble.Patches;
 
 namespace ForagersGamble.Patches
 {
-    public static class CulinaryArtilleryCompat
+    public static class ACACompat
     {
         public const string ModID = "aculinaryartillery";
 
@@ -35,7 +35,7 @@ namespace ForagersGamble.Patches
                     .GetMethod("Transpiler", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)
             );
             var postfix = new HarmonyMethod(
-                typeof(CulinaryArtilleryCompat)
+                typeof(ACACompat)
                     .GetMethod(nameof(BlockBottle_TryEatStop_Postfix), BindingFlags.Static | BindingFlags.NonPublic)
             );
 

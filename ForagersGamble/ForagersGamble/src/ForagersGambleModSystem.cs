@@ -26,7 +26,7 @@ public class ForagersGambleModSystem : ModSystem
 		if (!Harmony.HasAnyPatches(HarmonyID))
 		{
 			harmony = new Harmony(HarmonyID);
-			CulinaryArtilleryCompat.TryApplyHarmony(api, harmony);
+			ACACompat.TryApplyHarmony(api, harmony);
 			harmony.PatchAllUncategorized();
 		}
 	}
