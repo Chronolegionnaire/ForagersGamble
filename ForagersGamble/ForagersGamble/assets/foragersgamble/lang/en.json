@@ -18,8 +18,8 @@
   "foragersgamble:Config.Setting.PoisonOnsetMax": "Poison Onset Max (hours, in-game)",
   "foragersgamble:Config.Setting.InstantDeathThreshold": "Instant Death Threshold",
   "foragersgamble:Config.Setting.ShowFoodInWarning": "Show what caused poison in damage text",
-  "foragersgamble:Config.Setting.RandomizeDamagingItems": "Randomize Damaging Items",
-  "foragersgamble:Config.Setting.RandomizeHealingItems": "Randomize Healing Items",
+  "foragersgamble:Config.Setting.ShuffleDamagingItems": "Shuffle Damaging Items",
+  "foragersgamble:Config.Setting.ShuffleHealingItems": "Shueffle Healing Items",
 
   "foragersgamble:Config.Setting.DeadJimChance": "Easter Egg Chance (≥50 dmg)",
 

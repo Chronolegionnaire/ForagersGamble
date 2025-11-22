@@ -62,7 +62,7 @@ public class ForagersGambleModSystem : ModSystem
 				..fgBehaviors
 			];
 		}
-		if (Config.ModConfig.Instance?.Main?.RandomizeDamagingItems == true)
+		if (Config.ModConfig.Instance?.Main?.ShuffleDamagingItems == true)
 		{
 			new ForagersGamble.Randomize.Randomizer().RandomizeFoodHealth(api);
 		}

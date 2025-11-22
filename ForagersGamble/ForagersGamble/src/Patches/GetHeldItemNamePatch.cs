@@ -39,6 +39,58 @@ namespace ForagersGamble.Patches
         {
             if (api?.World == null || coll?.Code == null) return null;
             var keyFull = coll.Code.ToString();
+            if (stack?.Block != null && PlantKnowledgeUtil.IsClipping(stack.Block))
+            {
+                if (PlantKnowledgeUtil.TryResolveBushFromClipping(api, stack.Block, out var bush))
+                {
+                    var bushKey = bush.Code?.ToString();
+                    if (!string.IsNullOrEmpty(bushKey) && idx != null && idx.TryGetFruit(bushKey, out var fr2))
+                    {
+                        if (fr2.Type == EnumItemClass.Item)
+                        {
+                            var it2 = api.World.GetItem(fr2.Code);
+                            if (it2 != null)
+                            {
+                                var t2 = new ItemStack(it2);
+                                var p2 = it2.GetNutritionProperties(api.World, t2, agent);
+                                if (IsEdible(p2)) return t2;
+                            }
+                        }
+                        else
+                        {
+                            var bl2 = api.World.GetBlock(fr2.Code);
+                            if (bl2 != null)
+                            {
+                                var t2 = new ItemStack(bl2);
+                                var p2 = bl2.GetNutritionProperties(api.World, t2, agent);
+                                if (IsEdible(p2)) return t2;
+                            }
+                        }
+                    }
+                    if (PlantKnowledgeUtil.TryResolveReferenceFruit(api, bush, new ItemStack(bush), out var viaBushFruit))
+                    {
+                        var p3 = viaBushFruit.Collectible.GetNutritionProperties(api.World, viaBushFruit, agent);
+                        if (IsEdible(p3)) return viaBushFruit;
+                    }
+                }
+            }
+            if (PlantKnowledgeUtil.IsClipping(coll) && PlantKnowledgeUtil.TryResolveBushFromClipping(api, coll, out var bush2))
+            {
+                var bushKey2 = bush2.Code?.ToString();
+                if (!string.IsNullOrEmpty(bushKey2) && idx != null && idx.TryGetFruit(bushKey2, out var frb))
+                {
+                    var test = frb.Type == EnumItemClass.Item
+                        ? new ItemStack(api.World.GetItem(frb.Code))
+                        : new ItemStack(api.World.GetBlock(frb.Code));
+                    if (test?.Collectible != null &&
+                        IsEdible(test.Collectible.GetNutritionProperties(api.World, test, agent))) return test;
+                }
+                if (PlantKnowledgeUtil.TryResolveReferenceFruit(api, bush2, new ItemStack(bush2), out var viaBushFruit))
+                {
+                    if (IsEdible(viaBushFruit.Collectible.GetNutritionProperties(api.World, viaBushFruit, agent)))
+                        return viaBushFruit;
+                }
+            }
             if (idx != null && idx.TryGetFruit(keyFull, out var fr))
             {
                 if (fr.Type == EnumItemClass.Item)
@@ -77,22 +129,36 @@ namespace ForagersGamble.Patches
 
                 if (baseTok.Any(char.IsDigit)) continue;
 
-                var candidate = new AssetLocation("game", "fruit-" + baseTok);
-
-                var item = api.World.GetItem(candidate);
-                if (item != null)
+                IEnumerable<string> DomainsToTry()
                 {
-                    var t = new ItemStack(item);
-                    var p = item.GetNutritionProperties(api.World, t, agent);
-                    if (IsEdible(p)) return t;
+                    var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    set.Add("game");
+                    var d1 = coll.Code?.Domain;
+                    if (!string.IsNullOrEmpty(d1)) set.Add(d1);
+                    var d2 = stack?.Block?.Code?.Domain;
+                    if (!string.IsNullOrEmpty(d2)) set.Add(d2);
+                    return set;
                 }
 
-                var block = api.World.GetBlock(candidate);
-                if (block != null)
+                foreach (var dom in DomainsToTry())
                 {
-                    var t = new ItemStack(block);
-                    var p = block.GetNutritionProperties(api.World, t, agent);
-                    if (IsEdible(p)) return t;
+                    var candidate = new AssetLocation(dom, "fruit-" + baseTok);
+
+                    var item = api.World.GetItem(candidate);
+                    if (item != null)
+                    {
+                        var t = new ItemStack(item);
+                        if (IsEdible(item.GetNutritionProperties(api.World, t, agent)))
+                            return t;
+                    }
+
+                    var block = api.World.GetBlock(candidate);
+                    if (block != null)
+                    {
+                        var t = new ItemStack(block);
+                        if (IsEdible(block.GetNutritionProperties(api.World, t, agent)))
+                            return t;
+                    }
                 }
             }
 
@@ -163,6 +229,28 @@ namespace ForagersGamble.Patches
             var itemProps = __instance.GetNutritionProperties(world, itemStack, agent);
             if (IsEdible(itemProps))
             {
+                if (itemStack.Block != null && PlantKnowledgeUtil.IsClipping(itemStack.Block))
+                {
+                    if (PlantKnowledgeUtil.TryResolveBushFromClipping(___api, itemStack.Block, out var bush))
+                    {
+                        var bushCode = bush?.Code?.ToString();
+                        if (!string.IsNullOrWhiteSpace(bushCode) && !Knowledge.IsKnown(agent, bushCode))
+                        {
+                            __result = Lang.Get(PlantKnowledgeUtil.ClassifyUnknownKey(itemStack.Block));
+                            return;
+                        }
+                    }
+                }
+                if (PlantKnowledgeUtil.IsClipping(__instance) &&
+                    PlantKnowledgeUtil.TryResolveBushFromClipping(___api, __instance, out var bush3))
+                {
+                    var bushCode = bush3?.Code?.ToString();
+                    if (!string.IsNullOrWhiteSpace(bushCode) && !Knowledge.IsKnown(agent, bushCode))
+                    {
+                        __result = Lang.Get("foragersgamble:unknown-berrybush");
+                        return;
+                    }
+                }
                 if (gatePlants && baseProduce != null)
                 {
                     var baseProps = baseProduce.Collectible.GetNutritionProperties(world, baseProduce, agent);
@@ -202,6 +290,28 @@ namespace ForagersGamble.Patches
                  itemProps.FoodCategory == EnumFoodCategory.Unknown ||
                  itemProps.FoodCategory == EnumFoodCategory.NoNutrition))
             {
+                if (itemStack.Block != null && PlantKnowledgeUtil.IsClipping(itemStack.Block))
+                {
+                    if (PlantKnowledgeUtil.TryResolveBushFromClipping(___api, itemStack.Block, out var bush))
+                    {
+                        var bushCode = bush?.Code?.ToString();
+                        if (!string.IsNullOrWhiteSpace(bushCode) && !Knowledge.IsKnown(agent, bushCode))
+                        {
+                            __result = Lang.Get(PlantKnowledgeUtil.ClassifyUnknownKey(itemStack.Block));
+                            return;
+                        }
+                    }
+                }
+                if (PlantKnowledgeUtil.IsClipping(__instance) &&
+                    PlantKnowledgeUtil.TryResolveBushFromClipping(___api, __instance, out var bush3))
+                {
+                    var bushCode = bush3?.Code?.ToString();
+                    if (!string.IsNullOrWhiteSpace(bushCode) && !Knowledge.IsKnown(agent, bushCode))
+                    {
+                        __result = Lang.Get("foragersgamble:unknown-berrybush");
+                        return;
+                    }
+                }
                 var edibleRef = TryResolveEdibleCounterpart(___api, idx, itemStack.Collectible, itemStack, agent);
                 if (edibleRef != null && !Knowledge.IsKnown(agent, edibleRef))
                 {
@@ -209,6 +319,12 @@ namespace ForagersGamble.Patches
                     if (asBlock != null)
                     {
                         __result = Lang.Get(PlantKnowledgeUtil.ClassifyUnknownKey(asBlock));
+                        return;
+                    }
+                    if (PlantKnowledgeUtil.IsClipping(itemStack.Collectible) ||
+                        PlantKnowledgeUtil.IsClipping(__instance))
+                    {
+                        __result = Lang.Get("foragersgamble:unknown-berrybush");
                         return;
                     }
                     var fprops = edibleRef.Collectible.GetNutritionProperties(world, edibleRef, agent);

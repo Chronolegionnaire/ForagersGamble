@@ -304,7 +304,7 @@ namespace ForagersGamble.Randomize
         private static string VariantKey(string formKey, string cookState)
             => string.IsNullOrEmpty(cookState) ? formKey ?? "" : $"{formKey}:{cookState}";
 
-        bool randomizeHealing = ModConfig.Instance?.Main?.RandomizeHealingItems == true;
+        bool randomizeHealing = ModConfig.Instance?.Main?.ShuffleHealingItems == true;
         static bool ShouldIgnore(AssetLocation code) =>
             code != null && string.Equals(code.Domain, "hydrateordiedrate", StringComparison.OrdinalIgnoreCase);
 
@@ -465,27 +465,46 @@ namespace ForagersGamble.Randomize
 
                 if (!fl.Contains(famId)) fl.Add(famId);
             }
+
             foreach (var (group, famListInGroup) in familiesByGroup)
             {
-                var participants = famListInGroup
+                var donors = famListInGroup
                     .Where(fid => vanillaByFamily.TryGetValue(fid, out var v) && v != null && v.Count > 0)
                     .ToList();
+                if (donors.Count < 2) continue;
+                var candidates = famListInGroup
+                    .Where(fid =>
+                        candidatesByFamily.TryGetValue(fid, out var slots) && slots != null && slots.Count > 0)
+                    .ToList();
 
-                if (participants.Count < 2) continue;
-                var donors = new List<string>(participants);
-                FisherYates(donors, rngA);
-                for (int i = 0; i < participants.Count; i++)
+                if (candidates.Count == 0) continue;
+
+                List<string> participants;
+
+                if (candidates.Count <= donors.Count)
                 {
-                    if (string.Equals(participants[i], donors[i], StringComparison.OrdinalIgnoreCase))
+                    participants = new List<string>(donors);
+                }
+                else
+                {
+                    participants = new List<string>(candidates);
+                    FisherYates(participants, rngA);
+                    participants = participants.Take(donors.Count).ToList();
+                }
+                var donorOrder = new List<string>(donors);
+                FisherYates(donorOrder, rngA);
+                for (int i = 0; i < donors.Count && i < participants.Count; i++)
+                {
+                    if (string.Equals(participants[i], donorOrder[i], StringComparison.OrdinalIgnoreCase))
                     {
-                        int j = (i + 1) % participants.Count;
-                        (donors[i], donors[j]) = (donors[j], donors[i]);
+                        int j = (i + 1) % donors.Count;
+                        (donorOrder[i], donorOrder[j]) = (donorOrder[j], donorOrder[i]);
                     }
                 }
-                for (int i = 0; i < participants.Count; i++)
+                for (int i = 0; i < donors.Count && i < participants.Count; i++)
                 {
                     var recFamId = participants[i];
-                    var donorFamId = donors[i];
+                    var donorFamId = donorOrder[i];
 
                     if (!candidatesByFamily.TryGetValue(recFamId, out var recSlots) || recSlots == null ||
                         recSlots.Count == 0)
@@ -498,22 +517,20 @@ namespace ForagersGamble.Randomize
                     foreach (var slot in recSlots)
                     {
                         var vkey = VariantKey(slot.FormKey, slot.CookState);
-                        if (!string.IsNullOrEmpty(vkey) && donorMap.TryGetValue(vkey, out var donorVal))
+                        if (string.IsNullOrEmpty(vkey)) continue;
+
+                        if (!donorMap.TryGetValue(vkey, out var donorVal))
+                            continue;
+
+                        if (slot.TargetFoodProps != null)
                         {
-                            if (slot.TargetFoodProps != null)
-                            {
-                                slot.TargetFoodProps.Health = donorVal;
-                                if (!ReferenceEquals(slot.Obj.NutritionProps, slot.TargetFoodProps))
-                                    slot.Obj.NutritionProps = slot.TargetFoodProps;
-                            }
-
-                            if (slot.IsLiquid && slot.LiquidPerLitreNode != null)
-                                slot.LiquidPerLitreNode["health"] = donorVal;
-
-                            assignedTotal++;
-                            if (slot.IsLiquid) assignedLiquids++;
-                            else assignedNonLiquids++;
+                            slot.TargetFoodProps.Health = donorVal;
+                            if (!ReferenceEquals(slot.Obj.NutritionProps, slot.TargetFoodProps))
+                                slot.Obj.NutritionProps = slot.TargetFoodProps;
                         }
+
+                        if (slot.IsLiquid && slot.LiquidPerLitreNode != null)
+                            slot.LiquidPerLitreNode["health"] = donorVal;
                     }
                 }
             }

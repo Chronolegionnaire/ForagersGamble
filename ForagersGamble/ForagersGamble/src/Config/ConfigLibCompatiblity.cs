@@ -34,8 +34,8 @@ namespace ForagersGamble.Config
         private const string settingInstantDeathThreshold = "foragersgamble:Config.Setting.InstantDeathThreshold";
         private const string settingShowFoodInWarning = "foragersgamble:Config.Setting.ShowFoodInWarning";
 
-        private const string settingRandomizeDamagingItems = "foragersgamble:Config.Setting.RandomizeDamagingItems";
-        private const string settingRandomizeHealingItems = "foragersgamble:Config.Setting.RandomizeHealingItems";
+        private const string settingShuffleDamagingItems = "foragersgamble:Config.Setting.ShuffleDamagingItems";
+        private const string settingShuffleHealingItems = "foragersgamble:Config.Setting.ShuffleHealingItems";
 
         // Poison
         private const string settingDeadJimChance = "foragersgamble:Config.Setting.DeadJimChance";
@@ -248,13 +248,13 @@ namespace ForagersGamble.Config
             ImGui.Checkbox(Lang.Get(settingShowFoodInWarning) + $"##showfood-{id}", ref showFood);
             main.ShowFoodInWarning = showFood;
 
-            bool randomizeDamaging = main.RandomizeDamagingItems;
-            ImGui.Checkbox(Lang.Get(settingRandomizeDamagingItems) + $"##randdmg-{id}", ref randomizeDamaging);
-            main.RandomizeDamagingItems = randomizeDamaging;
+            bool shuffleDamaging = main.ShuffleDamagingItems;
+            ImGui.Checkbox(Lang.Get(settingShuffleDamagingItems) + $"##shuffledmg-{id}", ref shuffleDamaging);
+            main.ShuffleDamagingItems = shuffleDamaging;
 
-            bool randomizeHealing = main.RandomizeHealingItems;
-            ImGui.Checkbox(Lang.Get(settingRandomizeHealingItems) + $"##randheal-{id}", ref randomizeHealing);
-            main.RandomizeHealingItems = randomizeHealing;
+            bool shuffleHealing = main.ShuffleHealingItems;
+            ImGui.Checkbox(Lang.Get(settingShuffleHealingItems) + $"##shuffleheal-{id}", ref shuffleHealing);
+            main.ShuffleHealingItems = shuffleHealing;
 
             ImGui.Spacing();
 

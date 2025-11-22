@@ -1,6 +1,7 @@
 using System;
 using HarmonyLib;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using ForagersGamble.Config;
@@ -54,6 +55,66 @@ namespace ForagersGamble.Patches
             return HideNutrition(agent, stack) ? 0f : vanilla;
         }
 
+        static bool TryGetLocalizedPrefix(string langKey, out string prefix, string englishFallback = null)
+        {
+            prefix = null;
+
+            const double NUM = -123456789.0;
+            const string STR = "\uE000\uE001__FG_PREFIX__\uE002";
+
+            try
+            {
+                string loc = Lang.Get(langKey, NUM, STR, NUM, STR, NUM, STR);
+
+                if (string.IsNullOrEmpty(loc) || loc == langKey)
+                {
+                    if (!string.IsNullOrEmpty(englishFallback))
+                    {
+                        prefix = englishFallback.Trim();
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                string numSent = NUM.ToString(CultureInfo.InvariantCulture);
+
+                int iNum = loc.IndexOf(numSent, StringComparison.Ordinal);
+                int iStr = loc.IndexOf(STR, StringComparison.Ordinal);
+
+                int cut = -1;
+                if (iNum >= 0 && iStr >= 0) cut = Math.Min(iNum, iStr);
+                else if (iNum >= 0) cut = iNum;
+                else if (iStr >= 0) cut = iStr;
+
+                prefix = (cut >= 0 ? loc.Substring(0, cut) : loc).Trim();
+                if (prefix.Length == 0 && !string.IsNullOrEmpty(englishFallback))
+                {
+                    prefix = englishFallback.Trim();
+                }
+
+                return prefix.Length > 0;
+            }
+            catch
+            {
+                if (!string.IsNullOrEmpty(englishFallback))
+                {
+                    prefix = englishFallback.Trim();
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
+        static bool MatchesLocalizedPrefix(string line, string langKey, string englishFallbackPrefix = null)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return false;
+            if (!TryGetLocalizedPrefix(langKey, out var pfx, englishFallbackPrefix)) return false;
+
+            return line.Trim().StartsWith(pfx, StringComparison.InvariantCultureIgnoreCase);
+        }
+
         static bool IsHydrationLine(string line)
         {
             var li = (line ?? "").Trim().ToLowerInvariant();
@@ -76,14 +137,21 @@ namespace ForagersGamble.Patches
         }
         static bool IsNutritionOrHydrationLine(string line)
         {
-            var li = (line ?? "").Trim().ToLowerInvariant();
-            if (li.StartsWith("when eaten:")) return true;
-            if (li.StartsWith("liquid-when-drunk")) return true;
-            if (li.StartsWith("food category:")) return true;
+            if (string.IsNullOrWhiteSpace(line)) return false;
+
+            if (MatchesLocalizedPrefix(line, "When eaten: {0} sat, {1} hp", "When eaten:")) return true;
+            if (MatchesLocalizedPrefix(line, "When eaten: {0} sat", "When eaten:")) return true;
+
+            if (MatchesLocalizedPrefix(line, "liquid-when-drunk-saturation-hp", "When drunk:")) return true;
+            if (MatchesLocalizedPrefix(line, "liquid-when-drunk-saturation", "When drunk:")) return true;
+
+            if (MatchesLocalizedPrefix(line, "Food Category: {0}", "Food Category:")) return true;
+
             if (IsHydrationLine(line)) return true;
 
             return false;
         }
+
 
         static void RemoveLines(StringBuilder dsc, Vintagestory.API.Common.Func<string, bool> predicate)
         {
@@ -122,13 +190,45 @@ namespace ForagersGamble.Patches
 
         static bool IsCraftingTransformLine(string line)
         {
+            if (string.IsNullOrWhiteSpace(line)) return false;
             var li = line.Trim().ToLowerInvariant();
 
-            if (li.StartsWith("when ground:")) return true;
-            if (li.StartsWith("when pulverized:")) return true;
-            if (li.StartsWith("requires pulverizer tier:")) return true;
-            if (li.StartsWith("burn temperature:")) return true;
-            if (li.StartsWith("burn duration:")) return true;
+            if (MatchesLocalizedPrefix(line, "When ground: Turns into {0}x {1}", "When ground:")) return true;
+            if (MatchesLocalizedPrefix(line, "When pulverized: Turns into {0}x {1}", "When pulverized:"))
+                return true;
+            if (MatchesLocalizedPrefix(line, "When pulverized: Turns into {0:0.#}x {1}", "When pulverized:"))
+                return true;
+
+            if (MatchesLocalizedPrefix(line, "When pressed: Turns into {0}l {1}", "When pressed:")) return true;
+            if (MatchesLocalizedPrefix(line, "When pressed: Turns into {0:0.#}l {1}", "When pressed:"))
+                return true;
+
+            if (MatchesLocalizedPrefix(line, "When juiced: Turns into {0:0.#}l {1}", "When juiced:")) return true;
+            if (MatchesLocalizedPrefix(line, "When juiced: Turns into {0:0.##}l {1}", "When juiced:")) return true;
+            if (MatchesLocalizedPrefix(line, "collectibleinfo-juicingproperties", "When juiced:")) return true;
+
+            if (MatchesLocalizedPrefix(line, "Requires Pulverizer tier: {0}", "Requires Pulverizer tier:"))
+                return true;
+            if (MatchesLocalizedPrefix(line, "Burn temperature: {0}°C", "Burn temperature:")) return true;
+            if (MatchesLocalizedPrefix(line, "Burn duration: {0}s", "Burn duration:")) return true;
+
+            if (MatchesLocalizedPrefix(line, "smeltdesc-bake-title", "Bakes into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-smelt-title", "Smelts into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-cook-title", "Cooks into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-convert-title", "When heated, turns into")) return true;
+
+            if (MatchesLocalizedPrefix(line, "smeltdesc-bake-singular", "Bakes into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-smelt-singular", "Smelts into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-cook-singular", "Cooks into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-convert-singular", "When heated, turns into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-fire-singular", "fires into")) return true;
+
+            if (MatchesLocalizedPrefix(line, "smeltdesc-bake-plural", "bake into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-smelt-plural", "smelt into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-cook-plural", "cook into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-convert-plural", "convert into")) return true;
+            if (MatchesLocalizedPrefix(line, "smeltdesc-fire-plural", "fire into")) return true;
+
             if (li.Contains("smelt")) return true;
             if (li.Contains("smelted")) return true;
             if (li.Contains("smelting")) return true;
@@ -136,6 +236,7 @@ namespace ForagersGamble.Patches
 
             return false;
         }
+
         static bool IsActuallyEdible(ItemStack stack, IWorldAccessor world, EntityAgent agent)
         {
             var props = stack?.Collectible?.GetNutritionProperties(world, stack, agent as EntityPlayer);
@@ -174,6 +275,7 @@ namespace ForagersGamble.Patches
             dsc.AppendLine(line);
         }
     }
+    
 
     [HarmonyPatch(typeof(CollectibleObject), nameof(CollectibleObject.GetHeldItemInfo))]
     [HarmonyPriority(Priority.Last)]

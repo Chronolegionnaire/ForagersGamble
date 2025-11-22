@@ -61,6 +61,21 @@ namespace ForagersGamble
             foreach (var coll in api.World.Collectibles)
             {
                 if (coll?.Code == null) continue;
+                if (!PlantKnowledgeUtil.IsClipping(coll)) continue;
+                var selfCode = coll.Code.ToString();
+                set.Add(selfCode);
+                set.Add(Norm(selfCode));
+                if (PlantKnowledgeUtil.TryResolveBushFromClipping(api, coll, out var bush))
+                {
+                    var bcode = bush?.Code?.ToString();
+                    if (!string.IsNullOrEmpty(bcode)) { set.Add(bcode); set.Add(Norm(bcode)); }
+
+                    if (PlantKnowledgeUtil.TryResolveReferenceFruit(api, bush, new ItemStack(bush), out var fruit))
+                    {
+                        var fcode = fruit.Collectible?.Code?.ToString();
+                        if (!string.IsNullOrEmpty(fcode)) { set.Add(fcode); set.Add(Norm(fcode)); }
+                    }
+                }
                 if (coll is BlockSapling) continue;
                 if (coll is BlockLiquidContainerTopOpened) continue;
                 if (coll is BlockLiquidContainerBase) continue;
@@ -90,7 +105,6 @@ namespace ForagersGamble
                 {
                     if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var baseProduce))
                     {
-                        var selfCode = coll.Code.ToString();
                         set.Add(selfCode);
                         set.Add(Norm(selfCode));
 

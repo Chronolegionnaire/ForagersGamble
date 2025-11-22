@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -248,22 +249,36 @@ internal static class HandbookVisibility
             var baseTok = tok.Replace("berries", "berry", System.StringComparison.OrdinalIgnoreCase)
                              .Trim('-', '_', '.');
 
-            var candidate = new AssetLocation("game", "fruit-" + baseTok);
-
-            var item = api.World.GetItem(candidate);
-            if (item != null)
+            IEnumerable<string> DomainsToTry()
             {
-                var t = new ItemStack(item);
-                var p = item.GetNutritionProperties(api.World, t, agent);
-                if (IsEdible(p)) return t;
+                var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                set.Add("game");
+                var d1 = coll.Code?.Domain;
+                if (!string.IsNullOrEmpty(d1)) set.Add(d1);
+                var d2 = stack?.Block?.Code?.Domain;
+                if (!string.IsNullOrEmpty(d2)) set.Add(d2);
+                return set;
             }
 
-            var block = api.World.GetBlock(candidate);
-            if (block != null)
+            foreach (var dom in DomainsToTry())
             {
-                var t = new ItemStack(block);
-                var p = block.GetNutritionProperties(api.World, t, agent);
-                if (IsEdible(p)) return t;
+                var candidate = new AssetLocation(dom, "fruit-" + baseTok);
+
+                var item = api.World.GetItem(candidate);
+                if (item != null)
+                {
+                    var t = new ItemStack(item);
+                    if (IsEdible(item.GetNutritionProperties(api.World, t, agent)))
+                        return t;
+                }
+
+                var block = api.World.GetBlock(candidate);
+                if (block != null)
+                {
+                    var t = new ItemStack(block);
+                    if (IsEdible(block.GetNutritionProperties(api.World, t, agent)))
+                        return t;
+                }
             }
         }
 
