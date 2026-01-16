@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using ForagersGamble.Config;
 using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
@@ -48,7 +49,6 @@ namespace ForagersGamble
             var cfg = ModConfig.Instance?.Main;
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // 1. Mushrooms from the index
             if (idx != null)
             {
                 foreach (var bl in api.World.Blocks)
@@ -63,7 +63,6 @@ namespace ForagersGamble
                 }
             }
 
-            // 2. Knowledge-gated blocks and their reference fruits
             foreach (var bl in api.World.Blocks)
             {
                 if (bl?.Code == null) continue;
@@ -86,7 +85,6 @@ namespace ForagersGamble
                 }
             }
 
-            // 3. Clippings, their bushes, and fruits
             foreach (var coll in api.World.Collectibles)
             {
                 if (coll?.Code == null) continue;
@@ -120,7 +118,6 @@ namespace ForagersGamble
                 if (coll is BlockLiquidContainerTopOpened) continue;
                 if (coll is BlockLiquidContainerBase) continue;
 
-                // Skip completely decorative flowers with no nutrition
                 if (coll is BlockPlant flowerBlk)
                 {
                     var p = flowerBlk.Code?.Path ?? "";
@@ -163,7 +160,6 @@ namespace ForagersGamble
                 }
             }
 
-            // 4. Liquid containers and their base produce (for plant/mushroom/All configs)
             if (cfg?.UnknownAll == true || cfg?.UnknownPlants == true || cfg?.UnknownMushrooms == true)
             {
                 foreach (var coll in api.World.Collectibles)
@@ -219,8 +215,6 @@ namespace ForagersGamble
                 }
             }
 
-            // 5. Also treat raw plant produce items (fruit/veg/grain/nut) as knowledge-gated
-            //    when UnknownPlants or UnknownAll is enabled.
             if (cfg?.UnknownPlants == true || cfg?.UnknownAll == true)
             {
                 foreach (var coll in api.World.Collectibles)
@@ -269,7 +263,6 @@ namespace ForagersGamble
                 }
             }
 
-            // 6. UnknownAll: any edible thing joins the universe
             if (cfg?.UnknownAll == true)
             {
                 foreach (var coll in api.World.Collectibles)
@@ -315,7 +308,6 @@ namespace ForagersGamble
                 var fullCode = coll.Code.ToString();
                 var normCode = Norm(fullCode);
 
-                // Only bother classifying things that are in the unknown universe
                 if (!set.Contains(fullCode) && !set.Contains(normCode)) continue;
 
                 var path = coll.Code.Path ?? "";
@@ -323,14 +315,12 @@ namespace ForagersGamble
 
                 UnknownNameCategory cat = UnknownNameCategory.None;
 
-                // 1) Mushroom detection via PlantKnowledgeIndex
                 if (idx != null && idx.IsMushroom(fullCode))
                 {
                     cat = UnknownNameCategory.Mushroom;
                 }
                 else
                 {
-                    // 2) Clippings / berry bushes / crops / plants
                     if (PlantKnowledgeUtil.IsClipping(coll))
                     {
                         cat = UnknownNameCategory.BerryBush;
@@ -349,7 +339,6 @@ namespace ForagersGamble
                     }
                 }
 
-                // 3) Food-category-based classification (for UnknownAll and plant produce)
                 ItemStack tmpStack = null;
                 try
                 {
@@ -373,7 +362,6 @@ namespace ForagersGamble
 
                     var fcat = props?.FoodCategory ?? EnumFoodCategory.Unknown;
 
-                    // Mark liquid containers of interest
                     var hasLiquidProps = coll.Attributes?["waterTightContainerProps"]?.Exists == true;
                     if (hasLiquidProps &&
                         fcat != EnumFoodCategory.Unknown &&
@@ -383,7 +371,6 @@ namespace ForagersGamble
                         liquidSet.Add(normCode);
                     }
 
-                    // Only override category if we don't already have a strong plant-type category
                     if (cat == UnknownNameCategory.None || cat == UnknownNameCategory.PlantGeneric)
                     {
                         switch (fcat)
@@ -423,7 +410,6 @@ namespace ForagersGamble
                 }
             }
 
-// commit
             s_unknownUniverse = set;
             s_codeToUnknownNameCategory = nameMap;
             s_liquidContainerUniverse = liquidSet;
@@ -827,13 +813,23 @@ namespace ForagersGamble
                 foreach (var c in BuildFruitFamily(fru, domain)) yield return c;
                 yield break;
             }
+            var pathPart = path;
 
-            if (path.StartsWith("seeds-", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("seed-", StringComparison.OrdinalIgnoreCase))
+            var colon = path.IndexOf(':');
+            if (colon > 0)
             {
-                var rest = path.StartsWith("seeds-", StringComparison.OrdinalIgnoreCase)
-                    ? path.Substring("seeds-".Length)
-                    : path.Substring("seed-".Length);
+                domain = path.Substring(0, colon);
+                pathPart = path.Substring(colon + 1);
+            }
+
+            var seedPrefixes = new[] { "seeds-", "seed-", "melonseeds-" };
+
+            var matchedPrefix = seedPrefixes.FirstOrDefault(p =>
+                pathPart.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+
+            if (matchedPrefix != null)
+            {
+                var rest = pathPart.Substring(matchedPrefix.Length);
 
                 rest = rest.Trim('-', '_', '.');
 
@@ -849,8 +845,9 @@ namespace ForagersGamble
                         { "spelt", "rye", "rice", "amaranth" };
 
                     var prefix = grains.Contains(rest) ? "grain-" : "vegetable-";
-                    yield return $"game:{prefix}{rest}";
-                    yield return $"game:seeds-{rest}";
+
+                    yield return $"{domain}:{prefix}{rest}";
+                    yield return $"{domain}:seeds-{rest}";
                 }
 
                 yield break;
@@ -881,13 +878,11 @@ namespace ForagersGamble
             if (agent == null || api?.World == null || coll == null || stack == null)
                 return false;
 
-            // Config: if user doesn't care about liquids/mushrooms/plants, bail
             if (!(unknownAll || unknownPlants || unknownMushrooms))
                 return false;
 
             var world = api.World;
 
-            // Check current container content's edibility
             FoodNutritionProperties selfProps = null;
             try
             {
@@ -904,8 +899,6 @@ namespace ForagersGamble
             if (!selfEdible)
                 return false;
 
-            // Resolve base produce / edible counterpart (this is static per content type,
-            // but we still use it here only to decide whose knowledge to check)
             ItemStack baseProduce = null;
             try
             {
@@ -927,14 +920,12 @@ namespace ForagersGamble
 
             var parent = baseProduce ?? edibleCounterpart;
 
-            // If the liquid item itself is unknown, mask as unknown-liquid
             if (!IsKnown(agent, stack))
             {
                 langKey = "foragersgamble:unknown-liquid";
                 return true;
             }
 
-            // If its base parent produce is unknown, also mask as unknown-liquid
             if (parent != null && !IsKnown(agent, parent))
             {
                 langKey = "foragersgamble:unknown-liquid";

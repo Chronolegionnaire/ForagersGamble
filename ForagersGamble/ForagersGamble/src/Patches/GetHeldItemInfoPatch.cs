@@ -176,7 +176,7 @@ namespace ForagersGamble.Patches
 
             if (HideNutrition(agent, stack))
             {
-                RemoveLines(dsc, IsNutritionOrHydrationLine);
+                RemoveLines(dsc, l => IsNutritionOrHydrationLine(l) || IsDietaryNoveltyLine(l));
             }
             if (IsFood(stack, world, agent) && HideCrafting(agent, stack))
             {
@@ -273,6 +273,25 @@ namespace ForagersGamble.Patches
             }
 
             dsc.AppendLine(line);
+        }
+        
+        static bool IsDietaryNoveltyLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return false;
+            string noveltyLabel = Lang.Get("dietarynovelty:playerinfo-nutrition-novelty");
+            if (string.IsNullOrEmpty(noveltyLabel) ||
+                noveltyLabel == "dietarynovelty:playerinfo-nutrition-novelty")
+            {
+                noveltyLabel = "novelty";
+            }
+
+            var li = line.Trim();
+            if (li.IndexOf(noveltyLabel, StringComparison.InvariantCultureIgnoreCase) < 0)
+                return false;
+
+            int colon = li.IndexOf(':');
+            int slash = li.LastIndexOf('/');
+            return colon >= 0 && slash > colon;
         }
     }
     

@@ -28,7 +28,8 @@ namespace ForagersGamble
         public static PlantKnowledgeIndex Build(ICoreAPI api)
         {
             var idx = new PlantKnowledgeIndex();
-
+            var fruitCache = new Dictionary<string, ItemStack>(StringComparer.OrdinalIgnoreCase);
+            var noFruitCache = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var bl in api.World.Blocks)
             {
                 if (bl?.Code == null) continue;
