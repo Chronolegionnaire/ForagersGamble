@@ -1,5 +1,7 @@
 using System.Text;
 using HarmonyLib;
+using ForagersGamble;
+using ForagersGamble.Config;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
@@ -14,7 +16,14 @@ namespace ForagersGamble.Patches
         {
             if (s?.Collectible == null) return false;
             if (s.Collectible.Attributes?["waterTightContainerProps"]?.Exists == true) return true;
-            try { return BlockLiquidContainerBase.GetContainableProps(s) != null; } catch { return false; }
+            try
+            {
+                return BlockLiquidContainerBase.GetContainableProps(s) != null;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         static void Postfix(BlockLiquidContainerTopOpened __instance, ItemSlot inSlot, ref string __result)
@@ -27,6 +36,9 @@ namespace ForagersGamble.Patches
             var world = api?.World;
             var agent = (world as IClientWorldAccessor)?.Player?.Entity as EntityPlayer;
             if (agent?.Player?.WorldData?.CurrentGameMode != EnumGameMode.Survival) return;
+
+            var cfg = ModConfig.Instance?.Main;
+            if (cfg == null) return;
 
             var mGetCurrentLitres = AccessTools.Method(
                 typeof(BlockLiquidContainerBase),
@@ -46,40 +58,37 @@ namespace ForagersGamble.Patches
             var content = (ItemStack)mGetContent.Invoke(__instance, new object[] { inSlot.Itemstack });
             if (content == null || !IsLiquid(content)) return;
 
-            ItemStack parent = null;
-            if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, content, out var baseProduce) && baseProduce != null)
+            // Centralized unknown-liquid check
+            if (!Knowledge.TryResolveUnknownLiquidName(
+                    agent,
+                    api,
+                    content.Collectible,
+                    content,
+                    cfg.UnknownAll == true,
+                    cfg.UnknownPlants,
+                    cfg.UnknownMushrooms,
+                    out var langKey))
             {
-                parent = baseProduce;
+                return;
             }
-            else
+
+            var containerName = inSlot.Itemstack.GetName();
+
+            var mPerishContainer = AccessTools.Method(
+                typeof(Block),
+                "PerishableInfoCompactContainer",
+                new[] { typeof(ICoreAPI), typeof(ItemSlot) }
+            );
+            string perish = mPerishContainer != null
+                ? (string)mPerishContainer.Invoke(__instance, new object[] { api, inSlot })
+                : BlockLiquidContainerBase.PerishableInfoCompact(api, inSlot, 0f, false);
+
+            var contentName = Lang.Get(langKey);
+
+            __result = Lang.Get("contained-liquidcontainer-compact", new object[]
             {
-                parent = Patch_CollectibleObject_GetHeldItemName
-                    .TryResolveEdibleCounterpart(api, PlantKnowledgeIndex.Get(api), content.Collectible, content, agent);
-            }
-
-            bool parentUnknown = parent != null && !Knowledge.IsKnown(agent, parent);
-            bool liquidUnknown = !Knowledge.IsKnown(agent, content);
-
-            if (parentUnknown && liquidUnknown)
-            {
-                var containerName = inSlot.Itemstack.GetName();
-
-                var mPerishContainer = AccessTools.Method(
-                    typeof(Block),
-                    "PerishableInfoCompactContainer",
-                    new[] { typeof(ICoreAPI), typeof(ItemSlot) }
-                );
-                string perish = mPerishContainer != null
-                    ? (string)mPerishContainer.Invoke(__instance, new object[] { api, inSlot })
-                    : BlockLiquidContainerBase.PerishableInfoCompact(api, inSlot, 0f, false);
-
-                var contentName = Lang.Get("foragersgamble:unknown-liquid");
-
-                __result = Lang.Get("contained-liquidcontainer-compact", new object[]
-                {
-                    containerName, litres, contentName, perish
-                });
-            }
+                containerName, litres, contentName, perish
+            });
         }
     }
 }
