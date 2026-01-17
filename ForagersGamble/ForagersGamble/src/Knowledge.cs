@@ -1,4 +1,3 @@
-// File: Knowledge.cs
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,22 +16,18 @@ namespace ForagersGamble
         private const string KnownHealthSet = "knownHealth";
         private const string ProgressTree = "knowledgeProgress";
         private static readonly string[] CookStates = { "partbaked", "perfect", "charred" };
-        private static Dictionary<string, string> s_derivativeToBase; // derivative -> base produce code
+        private static Dictionary<string, string> s_derivativeToBase;
         private static Dictionary<string, HashSet<string>> s_baseToDerivatives;
-        // -----------------------------
-        // Unknown naming categories
-        // -----------------------------
+
         public enum UnknownNameCategory
         {
             None = 0,
 
-            // plant-ish
             Mushroom,
             BerryBush,
             Crop,
             PlantGeneric,
 
-            // food-ish
             Fruit,
             Vegetable,
             Grain,
@@ -45,15 +40,8 @@ namespace ForagersGamble
         private static Dictionary<string, UnknownNameCategory> s_codeToUnknownNameCategory;
         private static HashSet<string> s_liquidContainerUniverse;
         private static HashSet<string> s_unknownUniverse;
-
-        // -----------------------------
-        // Caches for "smarter" masking
-        // -----------------------------
         private static readonly object s_cacheLock = new();
-
-        // item code -> base produce code (or "" if not resolvable)
         private static readonly Dictionary<string, string> s_baseProduceCodeCache = new(StringComparer.OrdinalIgnoreCase);
-
         private static readonly string[] SeedPrefixes = { "seeds-", "seed-", "melonseeds-" };
 
         public static void ClearNameMaskingCaches()
@@ -83,34 +71,24 @@ namespace ForagersGamble
             bool unknownPlants = cfg.UnknownPlants == true;
             bool unknownMushrooms = cfg.UnknownMushrooms == true;
 
-            // Special-case seeds: show "unknown-seeds" if parent produce isn't known
             if (unknownAll || unknownPlants)
             {
                 var path = stack.Collectible.Code?.Path ?? "";
                 if (TryExtractSeedToken(path, out _))
                 {
-                    // Resolve the base produce for the seed item and gate on that
                     if (!TryResolveBaseProduceCodeCached(api, stack, out var parentCode))
-                        return false; // can't resolve -> don't alter display
+                        return false;
 
                     if (!IsKnown(agent, parentCode))
                     {
                         langKey = "foragersgamble:unknown-seeds";
                         return true;
                     }
-
-                    // known parent -> do not mask
                     return false;
                 }
             }
-
-            // Only mask things in our unknown universe
             if (!IsInUnknownUniverse(code)) return false;
-
-            // If already known, show real name
             if (IsKnown(agent, code)) return false;
-
-            // Liquid container special-case
             if (IsLiquidContainer(code))
             {
                 if (TryResolveUnknownLiquidName(
@@ -127,28 +105,17 @@ namespace ForagersGamble
                     return true;
                 }
             }
-
-            // General unknown category-based label
             if (TryResolveUnknownName(code, out var generalKey))
             {
                 langKey = generalKey;
                 return true;
             }
-
-            // ---------------------------------------------------------
-            // NEW: fallback — if the derivative itself has no category
-            // (common for pressedmash-* due to custom naming / no nutrition),
-            // try to resolve its base produce and use THAT category.
-            // ---------------------------------------------------------
             try
             {
                 if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var baseProduce) &&
                     baseProduce?.Collectible?.Code != null)
                 {
                     var baseCode = baseProduce.Collectible.Code.ToString();
-
-                    // If base is not known, mask derivative using base's category label
-                    // (even if the derivative has no entry in s_codeToUnknownNameCategory)
                     if (!string.IsNullOrWhiteSpace(baseCode) && !IsKnown(agent, baseCode))
                     {
                         if (TryResolveUnknownName(baseCode, out var baseKey))
@@ -161,7 +128,6 @@ namespace ForagersGamble
             }
             catch
             {
-                // ignore and fall through
             }
 
             return false;
@@ -234,15 +200,13 @@ namespace ForagersGamble
             return !string.IsNullOrEmpty(baseCode);
         }
 
-        // File: Knowledge.cs (inside BuildUnknownUniverse)
         public static void BuildUnknownUniverse(ICoreAPI api, PlantKnowledgeIndex idx)
         {
             ClearNameMaskingCaches();
 
-            var cfg = ModConfig.Instance?.Main;
+            var cfg = ModConfig.Instance.Main;
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // NEW: derivative/base indices
             var derivativeToBase = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var baseToDerivatives = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
@@ -256,6 +220,20 @@ namespace ForagersGamble
                     baseToDerivatives[@base] = hs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 hs.Add(deriv);
+            }
+
+            bool unknownAll = cfg?.UnknownAll == true;
+            bool unknownPlants = unknownAll || (cfg.UnknownPlants == true);
+            bool unknownMushrooms = unknownAll || (cfg.UnknownMushrooms == true);
+
+            bool IsMushroomBaseCode(string fullCode)
+            {
+                if (string.IsNullOrWhiteSpace(fullCode)) return false;
+                if (idx != null && idx.IsMushroom(fullCode)) return true;
+
+                int colon = fullCode.IndexOf(':');
+                var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+                return path.StartsWith("mushroom-", StringComparison.OrdinalIgnoreCase);
             }
 
             bool IsPlantProduceCode(string fullCode)
@@ -284,8 +262,7 @@ namespace ForagersGamble
                 }
             }
 
-            // mushrooms (from index)
-            if (idx != null)
+            if (unknownMushrooms && idx != null)
             {
                 foreach (var bl in api.World.Blocks)
                 {
@@ -299,63 +276,63 @@ namespace ForagersGamble
                 }
             }
 
-            // knowledge-gated plants + their reference fruits
-            foreach (var bl in api.World.Blocks)
+            if (unknownPlants)
             {
-                if (bl?.Code == null) continue;
-
-                if (PlantKnowledgeUtil.IsKnowledgeGatedPlant(bl, api))
+                foreach (var bl in api.World.Blocks)
                 {
-                    var bcode = bl.Code.ToString();
-                    set.Add(bcode);
-                    set.Add(Norm(bcode));
+                    if (bl?.Code == null) continue;
 
-                    if (PlantKnowledgeUtil.TryResolveReferenceFruit(api, bl, new ItemStack(bl), out var fruit))
+                    if (PlantKnowledgeUtil.IsKnowledgeGatedPlant(bl, api))
                     {
-                        var fcode = fruit.Collectible?.Code?.ToString();
-                        if (!string.IsNullOrEmpty(fcode))
-                        {
-                            set.Add(fcode);
-                            set.Add(Norm(fcode));
-                        }
-                    }
-                }
-            }
-
-            // clippings + related
-            foreach (var coll in api.World.Collectibles)
-            {
-                if (coll?.Code == null) continue;
-                if (!PlantKnowledgeUtil.IsClipping(coll)) continue;
-
-                var selfCode = coll.Code.ToString();
-                var selfNorm = Norm(selfCode);
-                set.Add(selfCode);
-                set.Add(selfNorm);
-
-                if (PlantKnowledgeUtil.TryResolveBushFromClipping(api, coll, out var bush))
-                {
-                    var bcode = bush?.Code?.ToString();
-                    if (!string.IsNullOrEmpty(bcode))
-                    {
+                        var bcode = bl.Code.ToString();
                         set.Add(bcode);
                         set.Add(Norm(bcode));
-                    }
 
-                    if (PlantKnowledgeUtil.TryResolveReferenceFruit(api, bush, new ItemStack(bush), out var fruit))
-                    {
-                        var fcode = fruit.Collectible?.Code?.ToString();
-                        if (!string.IsNullOrEmpty(fcode))
+                        if (PlantKnowledgeUtil.TryResolveReferenceFruit(api, bl, new ItemStack(bl), out var fruit))
                         {
-                            set.Add(fcode);
-                            set.Add(Norm(fcode));
+                            var fcode = fruit.Collectible?.Code?.ToString();
+                            if (!string.IsNullOrEmpty(fcode))
+                            {
+                                set.Add(fcode);
+                                set.Add(Norm(fcode));
+                            }
+                        }
+                    }
+                }
+
+                foreach (var coll in api.World.Collectibles)
+                {
+                    if (coll?.Code == null) continue;
+                    if (!PlantKnowledgeUtil.IsClipping(coll)) continue;
+
+                    var selfCode = coll.Code.ToString();
+                    var selfNorm = Norm(selfCode);
+                    set.Add(selfCode);
+                    set.Add(selfNorm);
+
+                    if (PlantKnowledgeUtil.TryResolveBushFromClipping(api, coll, out var bush))
+                    {
+                        var bcode = bush?.Code?.ToString();
+                        if (!string.IsNullOrEmpty(bcode))
+                        {
+                            set.Add(bcode);
+                            set.Add(Norm(bcode));
+                        }
+
+                        if (PlantKnowledgeUtil.TryResolveReferenceFruit(api, bush, new ItemStack(bush), out var fruit))
+                        {
+                            var fcode = fruit.Collectible?.Code?.ToString();
+                            if (!string.IsNullOrEmpty(fcode))
+                            {
+                                set.Add(fcode);
+                                set.Add(Norm(fcode));
+                            }
                         }
                     }
                 }
             }
 
-            // liquids (existing logic)
-            if (cfg?.UnknownAll == true || cfg?.UnknownPlants == true || cfg?.UnknownMushrooms == true)
+            if (unknownAll || unknownPlants || unknownMushrooms)
             {
                 foreach (var coll in api.World.Collectibles)
                 {
@@ -381,46 +358,59 @@ namespace ForagersGamble
                     }
                     catch
                     {
-                        /* ignore */
+                        props = null;
                     }
 
-                    if (props != null &&
-                        props.FoodCategory != EnumFoodCategory.Unknown &&
-                        props.FoodCategory != EnumFoodCategory.NoNutrition)
+                    if (props == null ||
+                        props.FoodCategory == EnumFoodCategory.Unknown ||
+                        props.FoodCategory == EnumFoodCategory.NoNutrition)
                     {
-                        var selfCode = coll.Code.ToString();
-                        var selfNorm = Norm(selfCode);
-                        set.Add(selfCode);
-                        set.Add(selfNorm);
+                        continue;
+                    }
 
-                        try
-                        {
-                            if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var baseProduce))
-                            {
-                                var baseCode = baseProduce?.Collectible?.Code?.ToString();
-                                if (!string.IsNullOrEmpty(baseCode))
-                                {
-                                    var baseNorm = Norm(baseCode);
-                                    set.Add(baseCode);
-                                    set.Add(baseNorm);
+                    bool include = unknownAll;
+                    string baseCode = null;
 
-                                    AddDerivEdge(selfCode, baseCode);
-                                    AddDerivEdge(selfNorm, baseNorm);
-                                    AddDerivEdge(selfCode, baseNorm);
-                                    AddDerivEdge(selfNorm, baseCode);
-                                }
-                            }
-                        }
-                        catch
+                    try
+                    {
+                        if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var baseProduce))
+                            baseCode = baseProduce?.Collectible?.Code?.ToString();
+                    }
+                    catch
+                    {
+                    }
+
+                    if (!include)
+                    {
+                        if (!string.IsNullOrEmpty(baseCode))
                         {
-                            /* ignore */
+                            if (unknownPlants && IsPlantProduceCode(baseCode)) include = true;
+                            else if (unknownMushrooms && IsMushroomBaseCode(baseCode)) include = true;
                         }
+                    }
+
+                    if (!include) continue;
+
+                    var selfCode = coll.Code.ToString();
+                    var selfNorm = Norm(selfCode);
+                    set.Add(selfCode);
+                    set.Add(selfNorm);
+
+                    if (!string.IsNullOrEmpty(baseCode))
+                    {
+                        var baseNorm = Norm(baseCode);
+                        set.Add(baseCode);
+                        set.Add(baseNorm);
+
+                        AddDerivEdge(selfCode, baseCode);
+                        AddDerivEdge(selfNorm, baseNorm);
+                        AddDerivEdge(selfCode, baseNorm);
+                        AddDerivEdge(selfNorm, baseCode);
                     }
                 }
             }
 
-            // direct plant produce (existing logic)
-            if (cfg?.UnknownPlants == true || cfg?.UnknownAll == true)
+            if (unknownPlants)
             {
                 foreach (var coll in api.World.Collectibles)
                 {
@@ -453,7 +443,6 @@ namespace ForagersGamble
                     }
                     catch
                     {
-                        /* ignore */
                     }
 
                     if (props == null ||
@@ -468,7 +457,6 @@ namespace ForagersGamble
                     set.Add(Norm(selfCode));
                 }
 
-                // NEW: include *processed* foods that resolve to plant produce (pickled/pressedmash/etc)
                 foreach (var coll in api.World.Collectibles)
                 {
                     if (coll?.Code == null) continue;
@@ -483,7 +471,6 @@ namespace ForagersGamble
                         continue;
                     }
 
-                    // CHANGE: allow pressedmash-* even if not edible
                     var path = coll.Code.Path ?? "";
                     bool allowNonEdibleDerivative =
                         path.StartsWith("pressedmash-", StringComparison.OrdinalIgnoreCase);
@@ -499,8 +486,7 @@ namespace ForagersGamble
                         var baseCode = baseProduce?.Collectible?.Code?.ToString();
                         if (string.IsNullOrEmpty(baseCode)) continue;
 
-                        // Only pull in derivatives of plant produce for UnknownPlants
-                        if (!(cfg.UnknownAll == true) && !IsPlantProduceCode(baseCode))
+                        if (!unknownAll && !IsPlantProduceCode(baseCode))
                             continue;
 
                         var selfCode = coll.Code.ToString();
@@ -519,13 +505,61 @@ namespace ForagersGamble
                     }
                     catch
                     {
-                        /* ignore */
                     }
                 }
             }
 
-            // unknown all foods (existing logic)
-            if (cfg?.UnknownAll == true)
+            if (unknownMushrooms)
+            {
+                foreach (var coll in api.World.Collectibles)
+                {
+                    if (coll?.Code == null) continue;
+
+                    ItemStack stack;
+                    try
+                    {
+                        stack = new ItemStack(coll);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (!IsEdibleCollectible(coll, stack))
+                        continue;
+
+                    try
+                    {
+                        if (!PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var baseProduce))
+                            continue;
+
+                        var baseCode = baseProduce?.Collectible?.Code?.ToString();
+                        if (string.IsNullOrEmpty(baseCode)) continue;
+
+                        if (!IsMushroomBaseCode(baseCode))
+                            continue;
+
+                        var selfCode = coll.Code.ToString();
+                        var selfNorm = Norm(selfCode);
+                        var baseNorm = Norm(baseCode);
+
+                        set.Add(selfCode);
+                        set.Add(selfNorm);
+                        set.Add(baseCode);
+                        set.Add(baseNorm);
+
+                        AddDerivEdge(selfCode, baseCode);
+                        AddDerivEdge(selfNorm, baseNorm);
+                        AddDerivEdge(selfCode, baseNorm);
+                        AddDerivEdge(selfNorm, baseCode);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
+            if (unknownAll)
             {
                 foreach (var coll in api.World.Collectibles)
                 {
@@ -548,7 +582,6 @@ namespace ForagersGamble
                     }
                     catch
                     {
-                        /* ignore */
                     }
 
                     if (props != null &&
@@ -562,7 +595,6 @@ namespace ForagersGamble
                 }
             }
 
-            // build maps
             var nameMap = new Dictionary<string, UnknownNameCategory>(StringComparer.OrdinalIgnoreCase);
             var liquidSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -607,7 +639,6 @@ namespace ForagersGamble
                     }
                     catch
                     {
-                        /* ignore */
                     }
 
                     var fcat = props?.FoodCategory ?? EnumFoodCategory.Unknown;
@@ -654,7 +685,6 @@ namespace ForagersGamble
             s_codeToUnknownNameCategory = nameMap;
             s_liquidContainerUniverse = liquidSet;
 
-            // NEW: store indices
             s_derivativeToBase = derivativeToBase;
             s_baseToDerivatives = baseToDerivatives;
         }
@@ -711,10 +741,6 @@ namespace ForagersGamble
 
             return true;
         }
-
-        // -----------------------------
-        // Progress / known logic
-        // -----------------------------
         public static float GetProgress(EntityAgent entity, ItemStack stack)
             => GetProgress(entity, ItemKey(stack));
 
@@ -804,8 +830,6 @@ namespace ForagersGamble
 
             if (!IsInUnknownUniverse(code))
                 return true;
-
-            // NEW: derivative inherits base knowledge
             if (s_derivativeToBase != null && s_derivativeToBase.TryGetValue(code, out var baseCode))
             {
                 if (!string.IsNullOrEmpty(baseCode) && GetProgress(entity, baseCode) >= 1f)
@@ -831,15 +855,11 @@ namespace ForagersGamble
             if (entity == null || string.IsNullOrWhiteSpace(code)) return;
 
             MarkDiscovered(entity, code);
-
-            // NEW: if this is a base produce, unlock all derivatives too
             if (s_baseToDerivatives != null && s_baseToDerivatives.TryGetValue(code, out var derivs))
             {
                 foreach (var d in derivs)
                     MarkDiscovered(entity, d);
             }
-
-            // also do it for normalized base if your universe uses Norm forms
             var norm = Norm(code);
             if (!string.IsNullOrEmpty(norm) && !norm.Equals(code, StringComparison.OrdinalIgnoreCase))
             {
@@ -1110,9 +1130,6 @@ namespace ForagersGamble
             foreach (var c in FamilyCodesFrom(domain, path)) yield return c;
         }
 
-        // -----------------------------
-        // Liquid masking logic
-        // -----------------------------
         public static bool TryResolveUnknownLiquidName(
             EntityPlayer agent,
             ICoreAPI api,
@@ -1130,49 +1147,77 @@ namespace ForagersGamble
             if (!(unknownAll || unknownPlants || unknownMushrooms))
                 return false;
 
-            var world = api.World;
-
-            FoodNutritionProperties selfProps = null;
-            try
-            {
-                selfProps = coll.GetNutritionProperties(world, stack, agent);
-            }
-            catch
-            {
-                // ignore
-            }
-
-            bool selfEdible = selfProps != null &&
-                              selfProps.FoodCategory != EnumFoodCategory.Unknown &&
-                              selfProps.FoodCategory != EnumFoodCategory.NoNutrition;
-
-            if (!selfEdible)
-                return false;
+            var idx = PlantKnowledgeIndex.Get(api);
 
             ItemStack baseProduce = null;
             try
             {
                 PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out baseProduce);
             }
-            catch { /* ignore */ }
+            catch
+            {
+            }
 
-            var idx = PlantKnowledgeIndex.Get(api);
             ItemStack edibleCounterpart = null;
             try
             {
                 edibleCounterpart = PlantKnowledgeUtil.TryResolveEdibleCounterpart(api, idx, coll, stack, agent);
             }
-            catch { /* ignore */ }
-
-            var parent = baseProduce ?? edibleCounterpart;
-
-            if (!IsKnown(agent, stack))
+            catch
             {
-                langKey = "foragersgamble:unknown-liquid";
-                return true;
             }
 
-            if (parent != null && !IsKnown(agent, parent))
+            ItemStack parent = baseProduce ?? edibleCounterpart;
+            string parentCode = parent?.Collectible?.Code?.ToString();
+
+            bool IsPlantBase(string fullCode)
+            {
+                if (string.IsNullOrWhiteSpace(fullCode)) return false;
+                int colon = fullCode.IndexOf(':');
+                var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+                return path.StartsWith("fruit-", StringComparison.OrdinalIgnoreCase)
+                       || path.StartsWith("vegetable-", StringComparison.OrdinalIgnoreCase)
+                       || path.StartsWith("grain-", StringComparison.OrdinalIgnoreCase)
+                       || path.StartsWith("nut-", StringComparison.OrdinalIgnoreCase)
+                       || path.StartsWith("legume-", StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool IsMushroomBase(string fullCode)
+            {
+                if (string.IsNullOrWhiteSpace(fullCode)) return false;
+                if (idx != null && idx.IsMushroom(fullCode)) return true;
+                int colon = fullCode.IndexOf(':');
+                var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+                return path.StartsWith("mushroom-", StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool ShouldMaskParent(string pcode)
+            {
+                if (string.IsNullOrWhiteSpace(pcode)) return false;
+                if (!IsInUnknownUniverse(pcode)) return false;
+
+                if (unknownAll) return GetProgress(agent, pcode) < 1f;
+
+                if (unknownPlants && IsPlantBase(pcode)) return GetProgress(agent, pcode) < 1f;
+                if (unknownMushrooms && IsMushroomBase(pcode)) return GetProgress(agent, pcode) < 1f;
+
+                return false;
+            }
+
+            if (parent != null)
+            {
+                if (ShouldMaskParent(parentCode))
+                {
+                    langKey = "foragersgamble:unknown-liquid";
+                    return true;
+                }
+
+                return false;
+            }
+
+            var selfCode = ItemKey(stack);
+            if (unknownAll && !string.IsNullOrWhiteSpace(selfCode) && IsInUnknownUniverse(selfCode) &&
+                GetProgress(agent, selfCode) < 1f)
             {
                 langKey = "foragersgamble:unknown-liquid";
                 return true;

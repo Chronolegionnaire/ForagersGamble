@@ -1,4 +1,3 @@
-// File: PlantKnowledgeUtil.cs
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -76,188 +75,82 @@ public static class PlantKnowledgeUtil
         return false;
     }
 
-    // File: PlantKnowledgeUtil.cs
     public static bool TryResolveBaseProduceFromItem(ICoreAPI api, ItemStack stack, out ItemStack baseProduce)
     {
         baseProduce = null;
         if (api?.World == null || stack?.Collectible == null) return false;
 
         var preferredDomain = stack.Collectible.Code?.Domain;
+        var codePath = stack.Collectible.Code?.Path ?? "";
 
-        // keep your sapling exclusion
+        if (codePath.Equals("soymilkportion", StringComparison.OrdinalIgnoreCase) ||
+            codePath.Equals("nut-cookedsoya", StringComparison.OrdinalIgnoreCase) ||
+            codePath.Equals("soakedsoybean", StringComparison.OrdinalIgnoreCase))
+        {
+            return TryMakeBase(api, "legume-", "soybean", out baseProduce, preferredDomain);
+        }
+
+        if (codePath.Equals("cocoabutter-liquid", StringComparison.OrdinalIgnoreCase) ||
+            codePath.Equals("cocoabutter-solid", StringComparison.OrdinalIgnoreCase) ||
+            codePath.Equals("fermentedcocoa", StringComparison.OrdinalIgnoreCase))
+        {
+            return TryMakeBase(api, "fruit-", "cocoa", out baseProduce, preferredDomain);
+        }
+
         if (stack.Block is BlockSapling)
             return false;
 
-        var codePath = stack.Collectible.Code?.Path ?? "";
-
-        // 1) seeds first (unchanged)
         if (TryResolveSeedDerivative(api, codePath, out baseProduce, preferredDomain))
             return true;
 
-        // 2) FIX: glued "pickled{family}-" derivatives must resolve to the REAL base produce,
-        // not rewrite codePath and then fall into "baseProduce = stack".
+        (string glued, string baseFamilyPrefix)[] gluedPickles =
         {
-            var lower = codePath.ToLowerInvariant();
+            ("pickledvegetable-", "vegetable-"),
+            ("pickledfruit-", "fruit-"),
+            ("pickledgrain-", "grain-"),
+            ("picklednut-", "nut-"),
+            ("pickledlegume-", "legume-")
+        };
 
-            (string glued, string baseFamilyPrefix)[] gluedPickles =
+        for (int i = 0; i < gluedPickles.Length; i++)
+        {
+            var (glued, baseFamilyPrefix) = gluedPickles[i];
+            if (codePath.StartsWith(glued, StringComparison.OrdinalIgnoreCase))
             {
-                ("pickledvegetable-", "vegetable-"),
-                ("pickledfruit-", "fruit-"),
-                ("pickledgrain-", "grain-"),
-                ("picklednut-", "nut-")
-            };
-
-            for (int i = 0; i < gluedPickles.Length; i++)
-            {
-                var (glued, baseFamilyPrefix) = gluedPickles[i];
-                if (lower.StartsWith(glued, StringComparison.OrdinalIgnoreCase))
-                {
-                    var token = codePath.Substring(glued.Length).Trim('-', '_', '.');
-                    token = NormalizeProduceToken(token);
-
-                    if (string.IsNullOrWhiteSpace(token))
-                        return false;
-
-                    // Resolve actual base produce stack; try "game" then preferred domain.
-                    return TryMakeBase(api, baseFamilyPrefix, token, out baseProduce, preferredDomain);
-                }
+                var token = NormalizeProduceToken(codePath.Substring(glued.Length).Trim('-', '_', '.'));
+                if (string.IsNullOrWhiteSpace(token)) return false;
+                return TryMakeBase(api, baseFamilyPrefix, token, out baseProduce, preferredDomain);
             }
         }
 
-        // 3) NEW: resolve known derivative prefixes BEFORE nutrition gate
-        // This allows non-edible derivatives like pressedmash-* to still resolve to their base produce.
         if (TryResolveMushroomDerivative(api, codePath, out baseProduce))
             return true;
 
-        if (TryResolveVegFruitGrainDerivative(api, codePath, out baseProduce))
+        if (TryResolveVegFruitGrainDerivative(api, codePath, out baseProduce, preferredDomain))
             return true;
 
-        // 4) nutrition gate (unchanged)
-        FoodNutritionProperties props = null;
+        FoodNutritionProperties props;
         try
         {
             props = stack.Collectible.GetNutritionProperties(api.World, stack, null);
         }
         catch
         {
-            props = null;
-        }
-
-        if (props == null ||
-            props.FoodCategory == EnumFoodCategory.Unknown ||
-            props.FoodCategory == EnumFoodCategory.NoNutrition)
-        {
             return false;
         }
 
-        // 5) base produce direct items (IMPORTANT: only if the item's REAL codePath starts with these)
+        if (props == null || props.FoodCategory == EnumFoodCategory.Unknown ||
+            props.FoodCategory == EnumFoodCategory.NoNutrition)
+            return false;
+
         if (codePath.StartsWith("fruit-", StringComparison.OrdinalIgnoreCase) ||
             codePath.StartsWith("vegetable-", StringComparison.OrdinalIgnoreCase) ||
-            codePath.StartsWith("grain-", StringComparison.OrdinalIgnoreCase))
+            codePath.StartsWith("grain-", StringComparison.OrdinalIgnoreCase) ||
+            codePath.StartsWith("nut-", StringComparison.OrdinalIgnoreCase) ||
+            codePath.StartsWith("legume-", StringComparison.OrdinalIgnoreCase))
         {
             baseProduce = stack;
             return true;
-        }
-
-        // 6) existing token extraction logic (unchanged)
-        string variantTok = null;
-        {
-            int dash = codePath.IndexOf('-');
-            if (dash >= 0 && dash + 1 < codePath.Length)
-            {
-                var after = codePath.Substring(dash + 1);
-                int dash2 = after.IndexOfAny(new[] { '-', '_', '.' });
-                variantTok = (dash2 >= 0 ? after.Substring(0, dash2) : after).Trim();
-            }
-        }
-
-        if (string.IsNullOrEmpty(variantTok))
-        {
-            var pathLower = codePath.ToLowerInvariant();
-            string[] suffixes =
-            {
-                "juiceportion", "ciderportion", "wineportion",
-                "juice", "cider", "wine",
-                "jam", "jelly", "compote", "chutney", "sauce",
-                "slices", "slice", "chopped", "diced",
-                "puree", "paste", "mash",
-                "dried", "candied", "stewed", "baked", "roasted", "fermented", "pickled"
-            };
-
-            foreach (var suf in suffixes)
-            {
-                if (pathLower.EndsWith(suf, StringComparison.OrdinalIgnoreCase))
-                {
-                    variantTok = codePath.Substring(0, codePath.Length - suf.Length).Trim('-', '_', '.');
-                    break;
-                }
-            }
-
-            if (string.IsNullOrEmpty(variantTok))
-            {
-                string[] leading = { "juiceportion", "ciderportion", "wineportion", "juice", "cider", "wine" };
-                foreach (var lead in leading)
-                {
-                    if (pathLower.StartsWith(lead))
-                    {
-                        variantTok = codePath.Substring(lead.Length).Trim('-', '_', '.');
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(variantTok)) return false;
-        variantTok = variantTok.Replace("berries", "berry", StringComparison.OrdinalIgnoreCase);
-
-        string familyPrefix;
-        switch (props.FoodCategory)
-        {
-            case EnumFoodCategory.Fruit: familyPrefix = "fruit-"; break;
-            case EnumFoodCategory.Grain: familyPrefix = "grain-"; break;
-            case EnumFoodCategory.Vegetable: familyPrefix = "vegetable-"; break;
-            default: return false;
-        }
-
-        bool TryResolve(string token, out ItemStack result)
-        {
-            result = null;
-            if (string.IsNullOrWhiteSpace(token)) return false;
-
-            var al = new AssetLocation("game", familyPrefix + token);
-
-            var it = api.World.GetItem(al);
-            if (it != null)
-            {
-                var test = new ItemStack(it);
-                var p2 = it.GetNutritionProperties(api.World, test, null);
-                if (IsEdible(p2))
-                {
-                    result = test;
-                    return true;
-                }
-            }
-
-            var bl = api.World.GetBlock(al);
-            if (bl != null)
-            {
-                var test = new ItemStack(bl);
-                var p2 = bl.GetNutritionProperties(api.World, test, null);
-                if (IsEdible(p2))
-                {
-                    result = test;
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        if (TryResolve(variantTok, out baseProduce)) return true;
-        if (variantTok.EndsWith("berry", StringComparison.OrdinalIgnoreCase))
-        {
-            var baseTok = variantTok.Substring(0, variantTok.Length - "berry".Length).Trim('-', '_', '.');
-            if (baseTok.Length >= 3 && TryResolve(baseTok, out baseProduce)) return true;
         }
 
         return false;
@@ -590,8 +483,6 @@ public static class PlantKnowledgeUtil
     {
         baseProduce = null;
         if (string.IsNullOrEmpty(codePath)) return false;
-
-        // de-duplicated prefixes
         string[] prefixes =
         {
             "cookedmushroom-",
@@ -668,117 +559,81 @@ public static class PlantKnowledgeUtil
         return false;
     }
 
-    private static bool TryResolveVegFruitGrainDerivative(ICoreAPI api, string codePath, out ItemStack baseProduce)
+    private static bool TryResolveVegFruitGrainDerivative(
+        ICoreAPI api,
+        string codePath,
+        out ItemStack baseProduce,
+        string preferredDomain = null)
     {
         baseProduce = null;
         if (string.IsNullOrEmpty(codePath)) return false;
 
-        if (codePath.StartsWith("cookedveggie-", StringComparison.OrdinalIgnoreCase) ||
-            codePath.StartsWith("choppedveggie-", StringComparison.OrdinalIgnoreCase) ||
-            codePath.StartsWith("cookedchoppedveggie-", StringComparison.OrdinalIgnoreCase) ||
-            codePath.StartsWith("cookedvegetable-", StringComparison.OrdinalIgnoreCase) ||
-            codePath.StartsWith("choppedvegetable-", StringComparison.OrdinalIgnoreCase) ||
-            codePath.StartsWith("cookedchoppedvegetable-", StringComparison.OrdinalIgnoreCase))
+        string[] plantLiquidRoots =
         {
-            var parts = codePath.Split('-');
-            if (parts.Length >= 2)
-            {
-                var endExclusive = parts.Length;
-
-                var last = parts[^1];
-                foreach (var st in CookStates)
-                    if (last.Equals(st, StringComparison.OrdinalIgnoreCase))
-                    {
-                        endExclusive--;
-                        break;
-                    }
-
-                var vegJoined = string.Join("-", parts, 1, Math.Max(0, endExclusive - 1));
-                vegJoined = StripLeadingProcessWord(vegJoined);
-
-                var veg = NormalizeProduceToken(vegJoined);
-                return TryMakeBase(api, "vegetable-", veg, out baseProduce);
-            }
-
-            return false;
-        }
-
-        // fruit-ish processed
-        if (codePath.StartsWith("dryfruit-", StringComparison.OrdinalIgnoreCase) ||
-            codePath.StartsWith("dehydratedfruit-", StringComparison.OrdinalIgnoreCase) ||
-            codePath.StartsWith("candiedfruit-", StringComparison.OrdinalIgnoreCase))
-        {
-            var parts = codePath.Split('-');
-            if (parts.Length >= 2)
-            {
-                var fr = NormalizeProduceToken(parts[1]);
-                return TryMakeBase(api, "fruit-", fr, out baseProduce);
-            }
-
-            return false;
-        }
-
-        // NEW/IMPROVED: pressedmash- can be fruit OR vegetable OR grain and token may contain dashes
-        if (codePath.StartsWith("pressedmash-", StringComparison.OrdinalIgnoreCase))
-        {
-            var after = codePath.Substring("pressedmash-".Length).Trim('-', '_', '.');
-            if (string.IsNullOrWhiteSpace(after)) return false;
-
-            // If you later discover pressedmash has known tail markers, strip them here.
-            // For now we take whole remainder (supports multi-dash produce like sugar-beet).
-            var tok = NormalizeProduceToken(after);
-
-            if (TryMakeBase(api, "vegetable-", tok, out baseProduce)) return true;
-            if (TryMakeBase(api, "fruit-", tok, out baseProduce)) return true;
-            if (TryMakeBase(api, "grain-", tok, out baseProduce)) return true;
-
-            return false;
-        }
-
-        // liquid roots that imply fruit bases (existing behavior, kept)
-        string[] fruitLiquidRoots =
-        {
-            "juice", "cider", "wine", "juiceportion", "vegetablejuiceportion", "ciderportion", "fruitsyrupportion",
-            "yogurt", "wineportion", "foodoilportion", "potentwineportion", "potentspiritportion",
+            "juice", "cider", "wine",
+            "juiceportion", "vegetablejuiceportion", "ciderportion", "wineportion",
+            "spiritportion", "vinegarportion", "tinctureportion",
+            "fineciderportion", "finespiritportion",
+            "nutmilkportion",
+            "lemonade",
+            "fruitsyrupportion",
+            "yogurt",
+            "foodoilportion",
+            "potentwineportion", "potentspiritportion",
             "strongspiritportion", "strongwineportion"
         };
-        foreach (var root in fruitLiquidRoots)
+
+        foreach (var root in plantLiquidRoots)
         {
             if (codePath.StartsWith(root + "-", StringComparison.OrdinalIgnoreCase))
             {
                 var token = codePath.Substring(root.Length).TrimStart('-').TrimEnd('-', '_', '.');
                 if (!string.IsNullOrWhiteSpace(token))
-                    return TryMakeBase(api, "fruit-", NormalizeProduceToken(token), out baseProduce);
+                    return TryMakeAnyPlantBase(api, token, out baseProduce, preferredDomain);
             }
 
             if (codePath.EndsWith(root, StringComparison.OrdinalIgnoreCase))
             {
                 var token = codePath.Substring(0, codePath.Length - root.Length).TrimEnd('-', '_', '.');
                 if (!string.IsNullOrWhiteSpace(token))
-                    return TryMakeBase(api, "fruit-", NormalizeProduceToken(token), out baseProduce);
+                    return TryMakeAnyPlantBase(api, token, out baseProduce, preferredDomain);
             }
         }
 
-        // grain leading/process (existing behavior, kept)
-        string[] grainLeading = { "mash", "wort", "beer" };
-        foreach (var lead in grainLeading)
+        if (codePath.StartsWith("pressedmash-", StringComparison.OrdinalIgnoreCase))
         {
-            if (codePath.StartsWith(lead + "-", StringComparison.OrdinalIgnoreCase))
-            {
-                var token = codePath.Substring(lead.Length).TrimStart('-').TrimEnd('-', '_', '.');
-                if (!string.IsNullOrWhiteSpace(token))
-                    return TryMakeBase(api, "grain-", NormalizeProduceToken(token), out baseProduce);
-            }
+            var tok = NormalizeProduceToken(codePath.Substring("pressedmash-".Length).Trim('-', '_', '.'));
+            return TryMakeAnyPlantBase(api, tok, out baseProduce, preferredDomain);
         }
 
-        string[] grainProcess = { "dough", "porridge", "flour" };
-        foreach (var gp in grainProcess)
+        return false;
+    }
+    
+    private static bool TryMakeAnyPlantBase(
+        ICoreAPI api,
+        string token,
+        out ItemStack baseProduce,
+        string preferredDomain = null)
+    {
+        baseProduce = null;
+        if (string.IsNullOrWhiteSpace(token)) return false;
+
+        token = NormalizeProduceToken(token);
+
+        string[] prefixes = { "fruit-", "vegetable-", "grain-", "nut-", "legume-" };
+
+        foreach (var pre in prefixes)
+            if (TryMakeBase(api, pre, token, out baseProduce, preferredDomain))
+                return true;
+
+        if (token.EndsWith("berry", StringComparison.OrdinalIgnoreCase))
         {
-            if (codePath.StartsWith(gp + "-", StringComparison.OrdinalIgnoreCase))
+            var noBerry = token.Substring(0, token.Length - "berry".Length).Trim('-', '_', '.');
+            if (noBerry.Length >= 3)
             {
-                var token = codePath.Substring(gp.Length).TrimStart('-').TrimEnd('-', '_', '.');
-                if (!string.IsNullOrWhiteSpace(token))
-                    return TryMakeBase(api, "grain-", NormalizeProduceToken(token), out baseProduce);
+                foreach (var pre in prefixes)
+                    if (TryMakeBase(api, pre, noBerry, out baseProduce, preferredDomain))
+                        return true;
             }
         }
 

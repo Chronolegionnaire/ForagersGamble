@@ -14,11 +14,9 @@ using Vintagestory.GameContent;
 [HarmonyPatch(typeof(CookingRecipe), nameof(CookingRecipe.GetOutputName))]
 public static class Patch_CookingRecipe_GetOutputName
 {
-    // Keep these static to avoid per-call allocations.
     private static readonly string[] Roles = { "primary", "secondary", "tertiary", "quaternary" };
     private static readonly string[] Suffixes = { "", "-instrumentalcase", "-topping" };
 
-    // Cache enum ToString().ToLowerInvariant() to avoid repeated allocations.
     private static readonly Dictionary<EnumItemClass, string> ItemClassLowerCache = new();
     private static string GetItemClassLower(EnumItemClass iclass)
     {
@@ -33,12 +31,9 @@ public static class Patch_CookingRecipe_GetOutputName
         }
     }
 
-    // Small reusable buffers to reduce GC churn.
     [ThreadStatic] private static Dictionary<string, string> _tokensToMask;
     [ThreadStatic] private static List<string> _sortedKeys;
 
-    // Result cache: avoid recomputing masking for the same meal shown repeatedly in UI.
-    // NOTE: We only use this cache if we can compute a knowledge revision that changes when learning happens.
     private const int ResultCacheMax = 512;
 
     private struct CacheKey : IEquatable<CacheKey>
@@ -115,8 +110,6 @@ public static class Patch_CookingRecipe_GetOutputName
             }
         }
     }
-
-    // If you have a known event when the player learns something, calling this is ideal.
     public static void ClearCache()
     {
         lock (CacheLock)
@@ -128,7 +121,6 @@ public static class Patch_CookingRecipe_GetOutputName
 
     private static int ComputeConfigSig(object cfg)
     {
-        // Best-effort config signature; if your config has a version/revision, use that instead.
         return cfg?.GetHashCode() ?? 0;
     }
 
@@ -151,10 +143,6 @@ public static class Patch_CookingRecipe_GetOutputName
 
         return sb.ToString();
     }
-
-    // -------- Knowledge revision detection (fix for “permanent” masking) --------
-
-    // Common names mods use for revision counters
     private static readonly string[] RevisionMemberNames =
     {
         "Revision", "Version", "ChangeCounter", "Changes", "DirtyCounter", "UpdateCounter", "Counter"
@@ -166,8 +154,6 @@ public static class Patch_CookingRecipe_GetOutputName
         if (idx == null) return false;
 
         var t = idx.GetType();
-
-        // Try properties first
         for (int i = 0; i < RevisionMemberNames.Length; i++)
         {
             var name = RevisionMemberNames[i];
@@ -187,8 +173,6 @@ public static class Patch_CookingRecipe_GetOutputName
                 }
             }
         }
-
-        // Then fields
         for (int i = 0; i < RevisionMemberNames.Length; i++)
         {
             var name = RevisionMemberNames[i];
@@ -208,12 +192,8 @@ public static class Patch_CookingRecipe_GetOutputName
                 }
             }
         }
-
-        // If we can't find a revision counter, caching would go stale -> disable caching.
         return false;
     }
-
-    // -------- Replacement helpers (no regex) --------
 
     private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 
@@ -272,10 +252,9 @@ public static class Patch_CookingRecipe_GetOutputName
         var api = cworld.Api;
         if (api == null) return;
 
-        var cfg = ModConfig.Instance?.Main;
+        var cfg = ModConfig.Instance.Main;
         var idx = PlantKnowledgeIndex.Get(api);
 
-        // Only cache if we can detect a knowledge revision that changes when learning occurs.
         bool canCache = TryGetKnowledgeRevision(idx, out int knowledgeRev);
         int configSig = ComputeConfigSig(cfg);
 
@@ -301,12 +280,8 @@ public static class Patch_CookingRecipe_GetOutputName
                 return;
             }
         }
-
-        // Reuse thread-local scratch structures
         var tokensToMask = _tokensToMask ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         tokensToMask.Clear();
-
-        // Build token map
         for (int i = 0; i < inputStacks.Length; i++)
         {
             var stack = inputStacks[i];
@@ -318,8 +293,6 @@ public static class Patch_CookingRecipe_GetOutputName
             var dom = stack.Collectible.Code?.Domain ?? "game";
             var path = stack.Collectible.Code?.Path ?? "";
             var first = stack.Collectible.FirstCodePart(0) ?? "";
-
-            // Meal ingredient tokens
             for (int r = 0; r < Roles.Length; r++)
             {
                 var role = Roles[r];
@@ -339,8 +312,6 @@ public static class Patch_CookingRecipe_GetOutputName
                     if (!string.IsNullOrWhiteSpace(match)) tokensToMask[match] = masked;
                 }
             }
-
-            // Recipe ingredient tokens
             var iclassLower = GetItemClassLower(stack.Class);
 
             for (int s = 0; s < Suffixes.Length; s++)
@@ -362,8 +333,6 @@ public static class Patch_CookingRecipe_GetOutputName
                     if (!string.IsNullOrWhiteSpace(match)) tokensToMask[match] = masked;
                 }
             }
-
-            // Plain displayed name fallback
             var plain = stack.GetName();
             if (!string.IsNullOrWhiteSpace(plain))
             {
@@ -372,8 +341,6 @@ public static class Patch_CookingRecipe_GetOutputName
         }
 
         if (tokensToMask.Count == 0) return;
-
-        // Sort keys longest-first to reduce overlap issues ("Berry" vs "Blue Berry").
         var sortedKeys = _sortedKeys ??= new List<string>(64);
         sortedKeys.Clear();
         foreach (var k in tokensToMask.Keys)
@@ -396,8 +363,6 @@ public static class Patch_CookingRecipe_GetOutputName
         }
 
         __result = result;
-
-        // Cache the final result if safe to do so.
         if (canCache)
         {
             PutCached(cacheKey, __result);

@@ -189,61 +189,64 @@ namespace ForagersGamble.Patches
                 var wat = byEntity.WatchedAttributes;
                 var root = wat?.GetTreeAttribute(NibbleLiquidKeys.AttrRoot);
                 bool wasNibble = root?.GetBool(NibbleLiquidKeys.NibbleIntent, false) ?? false;
+
                 ItemStack consumed = null;
                 if (slot?.Itemstack != null && __instance != null)
                     consumed = __instance.GetContent(slot.Itemstack);
+
                 string key = wat?.GetString(NibbleLiquidKeys.LastEatItemKey, null);
                 if (string.IsNullOrEmpty(key))
                 {
-                    if (consumed != null)
-                        key = Knowledge.ItemKey(consumed);
-                    else if (slot?.Itemstack != null)
-                        key = Knowledge.ItemKey(slot.Itemstack);
+                    if (consumed != null) key = Knowledge.ItemKey(consumed);
+                    else if (slot?.Itemstack != null) key = Knowledge.ItemKey(slot.Itemstack);
                 }
 
+                var cfg = ModConfig.Instance?.Main;
+                float amt = Math.Max(0f, Math.Min(1f, cfg?.LearnAmountPerEat ?? 0.20f));
+
                 bool justDiscovered = false;
-                bool liquidIsKnown = false;
 
                 if (!string.IsNullOrEmpty(key))
                 {
-                    var cfg = ModConfig.Instance?.Main;
-                    float amt = Math.Max(0f, Math.Min(1f, cfg?.LearnAmountPerEat ?? 0.20f));
                     bool isGated = Knowledge.IsInUnknownUniverse(key);
-
                     if (amt > 0f && isGated)
                     {
                         justDiscovered = Knowledge.AddProgress(byEntity, key, amt);
                         if (justDiscovered)
-                        {
                             Knowledge.MarkDiscovered(byEntity, key);
-                        }
-
-                        liquidIsKnown = justDiscovered || Knowledge.IsKnown(byEntity, key);
-                    }
-                    else
-                    {
-                        liquidIsKnown = Knowledge.IsKnown(byEntity, key);
                     }
                 }
-                if (justDiscovered)
-                {
-                    if (!string.IsNullOrEmpty(key))
-                    {
-                        Knowledge.MarkKnown(byEntity, key);
-                    }
-                    if (consumed != null && __instance != null)
-                    {
-                        var apiField = AccessTools.Field(typeof(Block), "api");
-                        var api = apiField?.GetValue(__instance) as ICoreAPI;
 
-                        if (api != null &&
-                            PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, consumed, out var baseProduce) &&
-                            baseProduce != null)
+                if (consumed != null && __instance != null)
+                {
+                    var apiField = AccessTools.Field(typeof(Block), "api");
+                    var api = apiField?.GetValue(__instance) as ICoreAPI;
+
+                    if (api != null &&
+                        PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, consumed, out var baseProduce) &&
+                        baseProduce != null)
+                    {
+                        var parentKey = Knowledge.ItemKey(baseProduce);
+
+                        if (!string.IsNullOrEmpty(parentKey) && Knowledge.IsInUnknownUniverse(parentKey) && amt > 0f)
+                        {
+                            var parentJustDiscovered = Knowledge.AddProgress(byEntity, parentKey, amt);
+                            if (parentJustDiscovered)
+                                Knowledge.MarkKnown(byEntity, baseProduce);
+                        }
+                        else if (!string.IsNullOrEmpty(parentKey) && Knowledge.IsInUnknownUniverse(parentKey) &&
+                                 amt <= 0f)
                         {
                             Knowledge.MarkKnown(byEntity, baseProduce);
                         }
                     }
                 }
+
+                if (justDiscovered && !string.IsNullOrEmpty(key))
+                {
+                    Knowledge.MarkKnown(byEntity, key);
+                }
+
                 if (wasNibble && slot?.Itemstack != null)
                 {
                     float factor = ModConfig.Instance.Main.EnableNibbling

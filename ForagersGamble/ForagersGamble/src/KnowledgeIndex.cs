@@ -1,4 +1,3 @@
-// File: PlantKnowledgeIndex.cs
 using System;
 using System.Collections.Generic;
 using Vintagestory.API.Common;

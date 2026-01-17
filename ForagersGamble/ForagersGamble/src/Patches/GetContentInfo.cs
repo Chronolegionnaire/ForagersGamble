@@ -81,7 +81,6 @@ namespace ForagersGamble.Patches
 
             if (IsLiquid(content))
             {
-                // Centralized unknown-liquid decision
                 if (Knowledge.TryResolveUnknownLiquidName(
                         agent,
                         api,

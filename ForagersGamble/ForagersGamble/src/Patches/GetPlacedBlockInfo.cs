@@ -67,7 +67,6 @@ namespace ForagersGamble.Patches
             var content = slot?.Itemstack;
             if (content == null || !IsLiquid(content)) return;
 
-            // Ask Knowledge if this should be masked as unknown-liquid
             if (!Knowledge.TryResolveUnknownLiquidName(
                     agent,
                     api,
@@ -78,7 +77,6 @@ namespace ForagersGamble.Patches
                     cfg.UnknownMushrooms,
                     out var langKey))
             {
-                // either the config doesn’t care or the player already knows it
                 return;
             }
 

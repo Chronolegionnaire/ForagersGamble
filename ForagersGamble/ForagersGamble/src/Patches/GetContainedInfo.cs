@@ -57,8 +57,6 @@ namespace ForagersGamble.Patches
 
             var content = (ItemStack)mGetContent.Invoke(__instance, new object[] { inSlot.Itemstack });
             if (content == null || !IsLiquid(content)) return;
-
-            // Centralized unknown-liquid check
             if (!Knowledge.TryResolveUnknownLiquidName(
                     agent,
                     api,

@@ -85,7 +85,6 @@ public static class ConfigManager
                     }
                     catch
                     {
-                        //Ignore unknown legacy data
                     }
                 }
             }
