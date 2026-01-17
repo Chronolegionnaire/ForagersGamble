@@ -1,7 +1,9 @@
+// File: PlantKnowledgeUtil.cs
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Newtonsoft.Json.Linq;
 using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
 using Vintagestory.GameContent;
@@ -23,7 +25,6 @@ public static class PlantKnowledgeUtil
         "land", "normal", "tallplant"
     };
 
-
     internal static readonly HashSet<string> ColorWords = new(StringComparer.OrdinalIgnoreCase)
     {
         "white", "black", "gray", "grey", "lightgray", "darkgray", "red", "orange", "yellow", "green",
@@ -35,7 +36,6 @@ public static class PlantKnowledgeUtil
         "tile", "claytile", "brick", "plank", "wood", "stone", "granite", "basalt", "limestone", "sandstone",
         "metal", "copper", "tin", "bronze", "iron", "steel", "cloth", "linen", "wool", "glass", "paper"
     };
-
 
     public static bool TryResolveReferenceFruit(ICoreAPI api, CollectibleObject coll, ItemStack heldStack,
         out ItemStack fruitStack)
@@ -52,7 +52,6 @@ public static class PlantKnowledgeUtil
             return TryResolveReferenceFruit(api, bushFromItem, new ItemStack(bushFromItem), out fruitStack);
         }
 
-        if (block == null) return false;
         if (IsClipping(block) && TryResolveBushFromClipping(api, block, out var bushBlk))
         {
             return TryResolveReferenceFruit(api, bushBlk, new ItemStack(bushBlk), out fruitStack);
@@ -77,17 +76,73 @@ public static class PlantKnowledgeUtil
         return false;
     }
 
+    // File: PlantKnowledgeUtil.cs
     public static bool TryResolveBaseProduceFromItem(ICoreAPI api, ItemStack stack, out ItemStack baseProduce)
     {
         baseProduce = null;
         if (api?.World == null || stack?.Collectible == null) return false;
+
         var preferredDomain = stack.Collectible.Code?.Domain;
+
+        // keep your sapling exclusion
         if (stack.Block is BlockSapling)
             return false;
+
         var codePath = stack.Collectible.Code?.Path ?? "";
+
+        // 1) seeds first (unchanged)
         if (TryResolveSeedDerivative(api, codePath, out baseProduce, preferredDomain))
             return true;
-        var props = stack.Collectible.GetNutritionProperties(api.World, stack, null);
+
+        // 2) FIX: glued "pickled{family}-" derivatives must resolve to the REAL base produce,
+        // not rewrite codePath and then fall into "baseProduce = stack".
+        {
+            var lower = codePath.ToLowerInvariant();
+
+            (string glued, string baseFamilyPrefix)[] gluedPickles =
+            {
+                ("pickledvegetable-", "vegetable-"),
+                ("pickledfruit-", "fruit-"),
+                ("pickledgrain-", "grain-"),
+                ("picklednut-", "nut-")
+            };
+
+            for (int i = 0; i < gluedPickles.Length; i++)
+            {
+                var (glued, baseFamilyPrefix) = gluedPickles[i];
+                if (lower.StartsWith(glued, StringComparison.OrdinalIgnoreCase))
+                {
+                    var token = codePath.Substring(glued.Length).Trim('-', '_', '.');
+                    token = NormalizeProduceToken(token);
+
+                    if (string.IsNullOrWhiteSpace(token))
+                        return false;
+
+                    // Resolve actual base produce stack; try "game" then preferred domain.
+                    return TryMakeBase(api, baseFamilyPrefix, token, out baseProduce, preferredDomain);
+                }
+            }
+        }
+
+        // 3) NEW: resolve known derivative prefixes BEFORE nutrition gate
+        // This allows non-edible derivatives like pressedmash-* to still resolve to their base produce.
+        if (TryResolveMushroomDerivative(api, codePath, out baseProduce))
+            return true;
+
+        if (TryResolveVegFruitGrainDerivative(api, codePath, out baseProduce))
+            return true;
+
+        // 4) nutrition gate (unchanged)
+        FoodNutritionProperties props = null;
+        try
+        {
+            props = stack.Collectible.GetNutritionProperties(api.World, stack, null);
+        }
+        catch
+        {
+            props = null;
+        }
+
         if (props == null ||
             props.FoodCategory == EnumFoodCategory.Unknown ||
             props.FoodCategory == EnumFoodCategory.NoNutrition)
@@ -95,6 +150,7 @@ public static class PlantKnowledgeUtil
             return false;
         }
 
+        // 5) base produce direct items (IMPORTANT: only if the item's REAL codePath starts with these)
         if (codePath.StartsWith("fruit-", StringComparison.OrdinalIgnoreCase) ||
             codePath.StartsWith("vegetable-", StringComparison.OrdinalIgnoreCase) ||
             codePath.StartsWith("grain-", StringComparison.OrdinalIgnoreCase))
@@ -103,6 +159,7 @@ public static class PlantKnowledgeUtil
             return true;
         }
 
+        // 6) existing token extraction logic (unchanged)
         string variantTok = null;
         {
             int dash = codePath.IndexOf('-');
@@ -114,18 +171,12 @@ public static class PlantKnowledgeUtil
             }
         }
 
-        if (TryResolveMushroomDerivative(api, codePath, out baseProduce))
-            return true;
-        if (TryResolveVegFruitGrainDerivative(api, codePath, out baseProduce))
-            return true;
-
         if (string.IsNullOrEmpty(variantTok))
         {
             var pathLower = codePath.ToLowerInvariant();
             string[] suffixes =
             {
-                "juiceportion", "ciderportion",
-                "wineportion",
+                "juiceportion", "ciderportion", "wineportion",
                 "juice", "cider", "wine",
                 "jam", "jelly", "compote", "chutney", "sauce",
                 "slices", "slice", "chopped", "diced",
@@ -137,8 +188,7 @@ public static class PlantKnowledgeUtil
             {
                 if (pathLower.EndsWith(suf, StringComparison.OrdinalIgnoreCase))
                 {
-                    variantTok = codePath.Substring(0, codePath.Length - suf.Length)
-                        .Trim('-', '_', '.');
+                    variantTok = codePath.Substring(0, codePath.Length - suf.Length).Trim('-', '_', '.');
                     break;
                 }
             }
@@ -181,8 +231,7 @@ public static class PlantKnowledgeUtil
             {
                 var test = new ItemStack(it);
                 var p2 = it.GetNutritionProperties(api.World, test, null);
-                if (p2 != null && p2.FoodCategory != EnumFoodCategory.Unknown &&
-                    p2.FoodCategory != EnumFoodCategory.NoNutrition)
+                if (IsEdible(p2))
                 {
                     result = test;
                     return true;
@@ -194,8 +243,7 @@ public static class PlantKnowledgeUtil
             {
                 var test = new ItemStack(bl);
                 var p2 = bl.GetNutritionProperties(api.World, test, null);
-                if (p2 != null && p2.FoodCategory != EnumFoodCategory.Unknown &&
-                    p2.FoodCategory != EnumFoodCategory.NoNutrition)
+                if (IsEdible(p2))
                 {
                     result = test;
                     return true;
@@ -218,16 +266,14 @@ public static class PlantKnowledgeUtil
     private static bool IsFood(ICoreAPI api, ItemStack stack, EntityAgent agent = null)
     {
         if (stack?.Collectible == null || api?.World == null) return false;
-        var props = stack.Collectible.GetNutritionProperties(api.World, stack, agent);
-        if (props == null) return false;
-        return props.FoodCategory != EnumFoodCategory.Unknown &&
-               props.FoodCategory != EnumFoodCategory.NoNutrition;
+        FoodNutritionProperties props = null;
+        try { props = stack.Collectible.GetNutritionProperties(api.World, stack, agent); }
+        catch { props = null; }
+        return IsEdible(props);
     }
 
     private static readonly string[] FoodPrefixes = { "vegetable-", "herb-", "spice-", "grain-", "" };
-
-    private static readonly string[] FoodSuffixes =
-        { "", "-raw", "-fresh", "-leaf", "-leaves", "-sprig", "-sprigs", "-bulb", "-root" };
+    private static readonly string[] FoodSuffixes = { "", "-raw", "-fresh", "-leaf", "-leaves", "-sprig", "-sprigs", "-bulb", "-root" };
 
     private static bool TryFruitViaNutritionProps(ICoreAPI api, JsonObject attribs, out ItemStack stack)
     {
@@ -236,7 +282,8 @@ public static class PlantKnowledgeUtil
 
         var tagsNode = attribs["NutritionProps"];
         if (tagsNode == null) return false;
-        List<string> tags = new List<string>();
+
+        List<string> tags = new();
         try
         {
             if (tagsNode.IsArray())
@@ -253,11 +300,10 @@ public static class PlantKnowledgeUtil
                 if (!string.IsNullOrWhiteSpace(t)) tags.Add(t.Trim());
             }
         }
-        catch
-        {
-        }
+        catch { /* ignore */ }
 
         if (tags.Count == 0) return false;
+
         foreach (var raw in tags)
         {
             var tag = raw.Replace("berries", "berry", StringComparison.OrdinalIgnoreCase).Trim();
@@ -320,13 +366,10 @@ public static class PlantKnowledgeUtil
         stack = null;
         if (api?.World == null || block?.Code == null) return false;
 
-        var domain = block.Code.Domain ?? "game";
         var path = block.Code.Path ?? "";
-
         var tokens = path.Split('-');
         var candidates = new List<string>();
 
-        // Build candidate tokens, ignoring stage/color/material fluff
         foreach (var t in tokens)
         {
             var tok = t.Trim();
@@ -334,11 +377,9 @@ public static class PlantKnowledgeUtil
             if (StageWords.Contains(tok)) continue;
             if (ColorWords.Contains(tok)) continue;
             if (MaterialWords.Contains(tok)) continue;
-
             candidates.Add(tok);
         }
 
-        // First pass: try to construct explicit code shapes
         foreach (var tok in candidates)
         {
             var baseTok = tok
@@ -346,11 +387,7 @@ public static class PlantKnowledgeUtil
                 .Replace("berry", "", StringComparison.OrdinalIgnoreCase)
                 .Trim('-');
 
-            var shapes = new List<string>
-            {
-                tok,
-                baseTok
-            };
+            var shapes = new List<string> { tok, baseTok };
 
             foreach (var pre in FoodPrefixes)
             foreach (var suf in FoodSuffixes)
@@ -377,7 +414,7 @@ public static class PlantKnowledgeUtil
                 }
 
                 var codeDom = new AssetLocation(block.Code.Domain ?? "game", shape);
-                if (codeDom.Domain != "game")
+                if (!codeDom.Domain.Equals("game", StringComparison.OrdinalIgnoreCase))
                 {
                     var item2 = api.World.GetItem(codeDom);
                     if (item2 != null)
@@ -404,7 +441,6 @@ public static class PlantKnowledgeUtil
             }
         }
 
-        // Second pass: scan items for shared tokens (still ignoring generic fluff)
         foreach (var it in api.World.Items)
         {
             if (it?.Code?.Path == null) continue;
@@ -418,9 +454,7 @@ public static class PlantKnowledgeUtil
                     tok.Equals("normal", StringComparison.OrdinalIgnoreCase) ||
                     tok.Equals("free", StringComparison.OrdinalIgnoreCase) ||
                     tok.Equals("tallplant", StringComparison.OrdinalIgnoreCase))
-                {
                     continue;
-                }
 
                 bool tokenMatch = false;
                 for (int i = 0; i < isegs.Length; i++)
@@ -452,21 +486,18 @@ public static class PlantKnowledgeUtil
         try
         {
             var t = block.GetType();
-            var names = new[]
-                { "fruit", "fruitCode", "berry", "berryCode", "produce", "product", "yieldItem", "harvestItem" };
+            var names = new[] { "fruit", "fruitCode", "berry", "berryCode", "produce", "product", "yieldItem", "harvestItem" };
 
             foreach (var n in names)
             {
-                var prop = t.GetProperty(n,
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
+                var prop = t.GetProperty(n, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
                 if (prop != null)
                 {
                     var val = prop.GetValue(block);
                     if (TryMakeStackFromUnknown(api, val, out stack)) return true;
                 }
 
-                var fld = t.GetField(n,
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
+                var fld = t.GetField(n, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
                 if (fld != null)
                 {
                     var val = fld.GetValue(block);
@@ -559,13 +590,14 @@ public static class PlantKnowledgeUtil
     {
         baseProduce = null;
         if (string.IsNullOrEmpty(codePath)) return false;
+
+        // de-duplicated prefixes
         string[] prefixes =
         {
-            "cookedmushroom-", "cookedmushroom-",
-            "choppedmushroom-", "choppedmushroom-",
-            "cookedchoppedmushroom-", "cookedchoppedmushroom-"
+            "cookedmushroom-",
+            "choppedmushroom-",
+            "cookedchoppedmushroom-"
         };
-        string[] states = { "partbaked", "perfect", "charred" };
 
         string matchedPrefix = null;
         foreach (var pre in prefixes)
@@ -578,12 +610,14 @@ public static class PlantKnowledgeUtil
         }
 
         if (matchedPrefix == null) return false;
+
         var after = codePath.Substring(matchedPrefix.Length);
         var segs = after.Split('-');
         if (segs.Length == 0) return false;
+
         int endExclusive = segs.Length;
-        var last = segs[segs.Length - 1];
-        foreach (var st in states)
+        var last = segs[^1];
+        foreach (var st in CookStates)
         {
             if (last.Equals(st, StringComparison.OrdinalIgnoreCase))
             {
@@ -611,8 +645,7 @@ public static class PlantKnowledgeUtil
             {
                 var test = new ItemStack(bl);
                 var p2 = bl.GetNutritionProperties(api.World, test, null);
-                if (p2 != null && p2.FoodCategory != EnumFoodCategory.Unknown &&
-                    p2.FoodCategory != EnumFoodCategory.NoNutrition)
+                if (IsEdible(p2))
                 {
                     baseProduce = test;
                     return true;
@@ -624,8 +657,7 @@ public static class PlantKnowledgeUtil
             {
                 var test = new ItemStack(it);
                 var p2 = it.GetNutritionProperties(api.World, test, null);
-                if (p2 != null && p2.FoodCategory != EnumFoodCategory.Unknown &&
-                    p2.FoodCategory != EnumFoodCategory.NoNutrition)
+                if (IsEdible(p2))
                 {
                     baseProduce = test;
                     return true;
@@ -640,6 +672,7 @@ public static class PlantKnowledgeUtil
     {
         baseProduce = null;
         if (string.IsNullOrEmpty(codePath)) return false;
+
         if (codePath.StartsWith("cookedveggie-", StringComparison.OrdinalIgnoreCase) ||
             codePath.StartsWith("choppedveggie-", StringComparison.OrdinalIgnoreCase) ||
             codePath.StartsWith("cookedchoppedveggie-", StringComparison.OrdinalIgnoreCase) ||
@@ -670,21 +703,39 @@ public static class PlantKnowledgeUtil
             return false;
         }
 
+        // fruit-ish processed
         if (codePath.StartsWith("dryfruit-", StringComparison.OrdinalIgnoreCase) ||
             codePath.StartsWith("dehydratedfruit-", StringComparison.OrdinalIgnoreCase) ||
-            codePath.StartsWith("pressedmash-", StringComparison.OrdinalIgnoreCase) ||
             codePath.StartsWith("candiedfruit-", StringComparison.OrdinalIgnoreCase))
         {
             var parts = codePath.Split('-');
             if (parts.Length >= 2)
             {
-                var fr = parts[1];
+                var fr = NormalizeProduceToken(parts[1]);
                 return TryMakeBase(api, "fruit-", fr, out baseProduce);
             }
 
             return false;
         }
 
+        // NEW/IMPROVED: pressedmash- can be fruit OR vegetable OR grain and token may contain dashes
+        if (codePath.StartsWith("pressedmash-", StringComparison.OrdinalIgnoreCase))
+        {
+            var after = codePath.Substring("pressedmash-".Length).Trim('-', '_', '.');
+            if (string.IsNullOrWhiteSpace(after)) return false;
+
+            // If you later discover pressedmash has known tail markers, strip them here.
+            // For now we take whole remainder (supports multi-dash produce like sugar-beet).
+            var tok = NormalizeProduceToken(after);
+
+            if (TryMakeBase(api, "vegetable-", tok, out baseProduce)) return true;
+            if (TryMakeBase(api, "fruit-", tok, out baseProduce)) return true;
+            if (TryMakeBase(api, "grain-", tok, out baseProduce)) return true;
+
+            return false;
+        }
+
+        // liquid roots that imply fruit bases (existing behavior, kept)
         string[] fruitLiquidRoots =
         {
             "juice", "cider", "wine", "juiceportion", "vegetablejuiceportion", "ciderportion", "fruitsyrupportion",
@@ -697,17 +748,18 @@ public static class PlantKnowledgeUtil
             {
                 var token = codePath.Substring(root.Length).TrimStart('-').TrimEnd('-', '_', '.');
                 if (!string.IsNullOrWhiteSpace(token))
-                    return TryMakeBase(api, "fruit-", token, out baseProduce);
+                    return TryMakeBase(api, "fruit-", NormalizeProduceToken(token), out baseProduce);
             }
 
             if (codePath.EndsWith(root, StringComparison.OrdinalIgnoreCase))
             {
                 var token = codePath.Substring(0, codePath.Length - root.Length).TrimEnd('-', '_', '.');
                 if (!string.IsNullOrWhiteSpace(token))
-                    return TryMakeBase(api, "fruit-", token, out baseProduce);
+                    return TryMakeBase(api, "fruit-", NormalizeProduceToken(token), out baseProduce);
             }
         }
 
+        // grain leading/process (existing behavior, kept)
         string[] grainLeading = { "mash", "wort", "beer" };
         foreach (var lead in grainLeading)
         {
@@ -715,7 +767,7 @@ public static class PlantKnowledgeUtil
             {
                 var token = codePath.Substring(lead.Length).TrimStart('-').TrimEnd('-', '_', '.');
                 if (!string.IsNullOrWhiteSpace(token))
-                    return TryMakeBase(api, "grain-", token, out baseProduce);
+                    return TryMakeBase(api, "grain-", NormalizeProduceToken(token), out baseProduce);
             }
         }
 
@@ -726,7 +778,7 @@ public static class PlantKnowledgeUtil
             {
                 var token = codePath.Substring(gp.Length).TrimStart('-').TrimEnd('-', '_', '.');
                 if (!string.IsNullOrWhiteSpace(token))
-                    return TryMakeBase(api, "grain-", token, out baseProduce);
+                    return TryMakeBase(api, "grain-", NormalizeProduceToken(token), out baseProduce);
             }
         }
 
@@ -757,6 +809,7 @@ public static class PlantKnowledgeUtil
 
         rest = NormalizeProduceToken(rest);
         if (string.IsNullOrWhiteSpace(rest)) return false;
+
         var candidates = new List<string> { rest };
 
         if (!rest.EndsWith("berry", StringComparison.OrdinalIgnoreCase))
@@ -767,6 +820,7 @@ public static class PlantKnowledgeUtil
             var noBerry = rest.Substring(0, rest.Length - "berry".Length).Trim('-', '_', '.');
             if (noBerry.Length >= 3) candidates.Add(noBerry);
         }
+
         var prefixes = new[] { "fruit-", "vegetable-", "grain-", "nut-" };
 
         foreach (var tok in candidates)
@@ -779,9 +833,7 @@ public static class PlantKnowledgeUtil
         return false;
     }
 
-    private static bool TryMakeBase(
-        ICoreAPI api, string familyPrefix, string token,
-        out ItemStack stack, string preferredDomain = null)
+    private static bool TryMakeBase(ICoreAPI api, string familyPrefix, string token, out ItemStack stack, string preferredDomain = null)
     {
         stack = null;
         if (api?.World == null || string.IsNullOrWhiteSpace(familyPrefix) || string.IsNullOrWhiteSpace(token))
@@ -803,8 +855,7 @@ public static class PlantKnowledgeUtil
             {
                 var test = new ItemStack(it);
                 var p = it.GetNutritionProperties(api.World, test, null);
-                if (p != null && p.FoodCategory != EnumFoodCategory.Unknown &&
-                    p.FoodCategory != EnumFoodCategory.NoNutrition)
+                if (IsEdible(p))
                 {
                     stack = test;
                     return true;
@@ -816,8 +867,7 @@ public static class PlantKnowledgeUtil
             {
                 var test = new ItemStack(bl);
                 var p = bl.GetNutritionProperties(api.World, test, null);
-                if (p != null && p.FoodCategory != EnumFoodCategory.Unknown &&
-                    p.FoodCategory != EnumFoodCategory.NoNutrition)
+                if (IsEdible(p))
                 {
                     stack = test;
                     return true;
@@ -834,6 +884,7 @@ public static class PlantKnowledgeUtil
         if (block is BlockCrop) return "foragersgamble:unknown-crop";
         if (block is BlockPlant) return "foragersgamble:unknown-plant";
         if (block is BlockFruitTreeBranch || block is BlockFruitTreeFoliage) return "foragersgamble:unknown-fruittree";
+
         var path = block.Code?.Path ?? "";
         var tname = block.GetType().Name;
         if (path.StartsWith("clipping-", StringComparison.OrdinalIgnoreCase) ||
@@ -862,6 +913,7 @@ public static class PlantKnowledgeUtil
         if (tn.Contains("Coral", StringComparison.OrdinalIgnoreCase)) return false;
         if (tn.Contains("Kelp", StringComparison.OrdinalIgnoreCase)) return false;
         if (tn.Contains("Seaweed", StringComparison.OrdinalIgnoreCase)) return false;
+
         if ((path.Contains("flower", StringComparison.OrdinalIgnoreCase) ||
              path.Contains("lily", StringComparison.OrdinalIgnoreCase)) &&
             (block.Attributes?["NutritionProps"] == null))
@@ -877,9 +929,8 @@ public static class PlantKnowledgeUtil
         {
             if (api != null)
             {
-                if (TryResolveBushFromClipping(api, block, out var bush)) return true;
+                if (TryResolveBushFromClipping(api, block, out _)) return true;
                 if (TryResolveReferenceFruit(api, block, new ItemStack(block), out _)) return true;
-
                 return false;
             }
 
@@ -890,7 +941,7 @@ public static class PlantKnowledgeUtil
             block is BlockFruitTreeBranch || block is BlockFruitTreeFoliage)
         {
             if (api != null &&
-                !PlantKnowledgeUtil.TryResolveReferenceFruit(api, block, new ItemStack(block), out _))
+                !TryResolveReferenceFruit(api, block, new ItemStack(block), out _))
             {
                 return false;
             }
@@ -910,7 +961,7 @@ public static class PlantKnowledgeUtil
         if (specialPlant)
         {
             if (api != null &&
-                !PlantKnowledgeUtil.TryResolveReferenceFruit(api, block, new ItemStack(block), out _))
+                !TryResolveReferenceFruit(api, block, new ItemStack(block), out _))
             {
                 return false;
             }
@@ -921,13 +972,14 @@ public static class PlantKnowledgeUtil
         return false;
     }
 
-    private static string NormalizeProduceToken(string token)
+    public static string NormalizeProduceToken(string token)
     {
         if (string.IsNullOrWhiteSpace(token)) return token;
         token = token.Trim('-', '_', '.');
         if (token.Equals("tomatoes", StringComparison.OrdinalIgnoreCase)) return "tomato";
         if (token.Equals("potatoes", StringComparison.OrdinalIgnoreCase)) return "potato";
         token = token.Replace("berries", "berry", StringComparison.OrdinalIgnoreCase);
+
         if (token.EndsWith("s", StringComparison.OrdinalIgnoreCase) &&
             !token.EndsWith("ss", StringComparison.OrdinalIgnoreCase))
         {
@@ -976,9 +1028,11 @@ public static class PlantKnowledgeUtil
 
         var bushCodeStr = clipping.Attributes?["bushCode"]?.AsString(null);
         if (string.IsNullOrWhiteSpace(bushCodeStr)) return false;
+
         var al = new AssetLocation(bushCodeStr.Trim());
         bushBlock = api.World.GetBlock(al);
         if (bushBlock != null) return true;
+
         if (string.IsNullOrEmpty(al.Domain) || al.Domain.Equals("game", StringComparison.OrdinalIgnoreCase))
         {
             var al2 = new AssetLocation(clipping.Code.Domain, al.Path);
@@ -1006,6 +1060,7 @@ public static class PlantKnowledgeUtil
         if (api?.World == null || coll?.Code == null) return null;
 
         var keyFull = coll.Code.ToString();
+
         if (stack?.Block != null && IsClipping(stack.Block))
         {
             if (TryResolveBushFromClipping(api, stack.Block, out var bush))
@@ -1019,8 +1074,7 @@ public static class PlantKnowledgeUtil
                         if (it2 != null)
                         {
                             var t2 = new ItemStack(it2);
-                            var p2 = it2.GetNutritionProperties(api.World, t2, agent);
-                            if (IsEdible(p2)) return t2;
+                            if (IsEdible(it2.GetNutritionProperties(api.World, t2, agent))) return t2;
                         }
                     }
                     else
@@ -1029,19 +1083,19 @@ public static class PlantKnowledgeUtil
                         if (bl2 != null)
                         {
                             var t2 = new ItemStack(bl2);
-                            var p2 = bl2.GetNutritionProperties(api.World, t2, agent);
-                            if (IsEdible(p2)) return t2;
+                            if (IsEdible(bl2.GetNutritionProperties(api.World, t2, agent))) return t2;
                         }
                     }
                 }
 
                 if (TryResolveReferenceFruit(api, bush, new ItemStack(bush), out var viaBushFruit))
                 {
-                    var p3 = viaBushFruit.Collectible.GetNutritionProperties(api.World, viaBushFruit, agent);
-                    if (IsEdible(p3)) return viaBushFruit;
+                    if (IsEdible(viaBushFruit.Collectible.GetNutritionProperties(api.World, viaBushFruit, agent)))
+                        return viaBushFruit;
                 }
             }
         }
+
         if (IsClipping(coll) && TryResolveBushFromClipping(api, coll, out var bush2))
         {
             var bushKey2 = bush2.Code?.ToString();
@@ -1064,6 +1118,7 @@ public static class PlantKnowledgeUtil
                     return viaBushFruit;
             }
         }
+
         if (idx != null && idx.TryGetFruit(keyFull, out var fr))
         {
             if (fr.Type == EnumItemClass.Item)
@@ -1072,8 +1127,7 @@ public static class PlantKnowledgeUtil
                 if (it != null)
                 {
                     var test = new ItemStack(it);
-                    var p = it.GetNutritionProperties(api.World, test, agent);
-                    if (IsEdible(p)) return test;
+                    if (IsEdible(it.GetNutritionProperties(api.World, test, agent))) return test;
                 }
             }
             else
@@ -1082,11 +1136,11 @@ public static class PlantKnowledgeUtil
                 if (bl != null)
                 {
                     var test = new ItemStack(bl);
-                    var p = bl.GetNutritionProperties(api.World, test, agent);
-                    if (IsEdible(p)) return test;
+                    if (IsEdible(bl.GetNutritionProperties(api.World, test, agent))) return test;
                 }
             }
         }
+
         var path = coll.Code.Path ?? "";
         if (string.IsNullOrWhiteSpace(path)) return null;
 
@@ -1098,15 +1152,12 @@ public static class PlantKnowledgeUtil
             if (ColorWords.Contains(tok)) continue;
             if (MaterialWords.Contains(tok)) continue;
 
-            var baseTok = tok.Replace("berries", "berry", StringComparison.OrdinalIgnoreCase)
-                .Trim('-', '_', '.');
-
+            var baseTok = tok.Replace("berries", "berry", StringComparison.OrdinalIgnoreCase).Trim('-', '_', '.');
             if (baseTok.Any(char.IsDigit)) continue;
 
             IEnumerable<string> DomainsToTry()
             {
-                var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                set.Add("game");
+                var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "game" };
                 var d1 = coll.Code?.Domain;
                 if (!string.IsNullOrEmpty(d1)) set.Add(d1);
                 var d2 = stack?.Block?.Code?.Domain;

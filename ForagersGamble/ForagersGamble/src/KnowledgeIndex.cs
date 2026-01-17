@@ -1,9 +1,7 @@
+// File: PlantKnowledgeIndex.cs
 using System;
 using System.Collections.Generic;
-using System.Reflection;
-using Newtonsoft.Json.Linq;
 using Vintagestory.API.Common;
-using Vintagestory.API.Datastructures;
 using Vintagestory.GameContent;
 
 namespace ForagersGamble
@@ -21,15 +19,12 @@ namespace ForagersGamble
         private readonly HashSet<string> knowledgeGatedBlocks = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> mushroomCodes = new(StringComparer.OrdinalIgnoreCase);
 
-        private PlantKnowledgeIndex()
-        {
-        }
+        private PlantKnowledgeIndex() { }
 
         public static PlantKnowledgeIndex Build(ICoreAPI api)
         {
             var idx = new PlantKnowledgeIndex();
-            var fruitCache = new Dictionary<string, ItemStack>(StringComparer.OrdinalIgnoreCase);
-            var noFruitCache = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var bl in api.World.Blocks)
             {
                 if (bl?.Code == null) continue;

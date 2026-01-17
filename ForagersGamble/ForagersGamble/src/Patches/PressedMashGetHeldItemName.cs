@@ -8,26 +8,10 @@ using Vintagestory.GameContent;
 
 namespace ForagersGamble.Patches
 {
-    internal static class NameMaskingScope
+    [HarmonyPatch(typeof(ItemPressedMash), nameof(ItemPressedMash.GetHeldItemName))]
+    public static class Patch_ItemPressedMash_GetHeldItemName
     {
-        [ThreadStatic] private static int _depth;
-        public static bool IsActive => _depth > 0;
-
-        public static void Enter() { _depth++; }
-        public static void Exit() { if (_depth > 0) _depth--; }
-        public static IDisposable Push() => new Scope();
-
-        private sealed class Scope : IDisposable
-        {
-            public Scope() { Enter(); }
-            public void Dispose() => Exit();
-        }
-    }
-
-    [HarmonyPatch(typeof(CollectibleObject), "GetHeldItemName")]
-    public static class Patch_CollectibleObject_GetHeldItemName
-    {
-        static void Postfix(CollectibleObject __instance, ItemStack itemStack, ref string __result, ICoreAPI ___api)
+        static void Postfix(ItemPressedMash __instance, ItemStack itemStack, ref string __result, ICoreAPI ___api)
         {
             if (NameMaskingScope.IsActive) return;
 
@@ -38,7 +22,6 @@ namespace ForagersGamble.Patches
             if (___api.World is not IClientWorldAccessor cwa) return;
             if (cwa.Player?.Entity is not EntityPlayer agent) return;
             if (agent.Player?.WorldData?.CurrentGameMode != EnumGameMode.Survival) return;
-
             if (Knowledge.TryGetMaskedHeldItemName(agent, ___api, __instance, itemStack, cfg, out var langKey))
             {
                 __result = Lang.Get(langKey);
