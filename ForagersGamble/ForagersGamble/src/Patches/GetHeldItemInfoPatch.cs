@@ -8,6 +8,7 @@ using ForagersGamble.Config;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
+using Vintagestory.API.MathTools;
 using Vintagestory.GameContent;
 
 namespace ForagersGamble.Patches
@@ -19,7 +20,7 @@ namespace ForagersGamble.Patches
             var ep = agent as EntityPlayer;
             return ep?.Player?.WorldData?.CurrentGameMode == EnumGameMode.Survival;
         }
-        
+
         static bool MaskingAllowed(EntityAgent agent)
             => !NameMaskingScope.IsActive && InSurvival(agent);
 
@@ -40,6 +41,22 @@ namespace ForagersGamble.Patches
             if (!InSurvival(agent)) return false;
             if (!ModConfig.Instance.Main.HideCraftingInfo) return false;
             return IsUnknownToPlayer(agent, stack);
+        }
+
+        static bool HideDescription(EntityAgent agent, ItemStack stack)
+        {
+            if (!InSurvival(agent)) return false;
+            return IsUnknownToPlayer(agent, stack);
+        }
+
+        static ItemStack GetKnowledgeCheckedStack(ItemStack stack)
+        {
+            if (stack?.Collectible is BlockLiquidContainerBase blc)
+            {
+                var content = blc.GetContent(stack);
+                if (content != null) return content;
+            }
+            return stack;
         }
 
         public static float FoodHealthMulIfKnown(float spoil, ItemStack stack, EntityAgent agent)
@@ -123,7 +140,7 @@ namespace ForagersGamble.Patches
             if (li.Contains(" hyd")) return true;
             var whenEatenLbl = Lang.Get("hydrateordiedrate:hydrateordiedrate-whenEaten")?.Trim().ToLowerInvariant();
             var whenDrunkLbl = Lang.Get("hydrateordiedrate:hydrateordiedrate-whenDrunk")?.Trim().ToLowerInvariant();
-            var hydLbl      = Lang.Get("hydrateordiedrate:hydrateordiedrate-hyd", 1f)?.Trim().ToLowerInvariant();
+            var hydLbl = Lang.Get("hydrateordiedrate:hydrateordiedrate-hyd", 1f)?.Trim().ToLowerInvariant();
 
             if (!string.IsNullOrEmpty(whenEatenLbl) && li.StartsWith(whenEatenLbl)) return true;
             if (!string.IsNullOrEmpty(whenDrunkLbl) && li.StartsWith(whenDrunkLbl)) return true;
@@ -135,6 +152,7 @@ namespace ForagersGamble.Patches
 
             return false;
         }
+
         static bool IsNutritionOrHydrationLine(string line)
         {
             if (string.IsNullOrWhiteSpace(line)) return false;
@@ -152,11 +170,10 @@ namespace ForagersGamble.Patches
             return false;
         }
 
-
         static void RemoveLines(StringBuilder dsc, Vintagestory.API.Common.Func<string, bool> predicate)
         {
             var lines = dsc.ToString().Replace("\r\n", "\n").Split('\n').ToList();
-            var kept  = lines.Where(l => !predicate(l)).ToList();
+            var kept = lines.Where(l => !predicate(l)).ToList();
             if (kept.Count == lines.Count) return;
 
             dsc.Clear();
@@ -166,7 +183,56 @@ namespace ForagersGamble.Patches
                 dsc.Append(kept[i]);
             }
         }
+        static bool ShouldKeepLineWhenUnknown(string line, EntityAgent agent, ItemStack stack, IWorldAccessor world)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return false;
 
+            if (!HideCrafting(agent, stack) && IsCraftingTransformLine(line)) return true;
+
+            if (!HideNutrition(agent, stack))
+            {
+                if (IsNutritionOrHydrationLine(line)) return true;
+                if (IsDietaryNoveltyLine(line)) return true;
+            }
+
+            return false;
+        }
+
+        static void WhitelistUnknownTooltip(EntityAgent agent, ItemStack stack, StringBuilder dsc, IWorldAccessor world)
+        {
+            if (!InSurvival(agent)) return;
+
+            var lines = dsc.ToString().Replace("\r\n", "\n").Split('\n');
+            var kept = new List<string>(lines.Length);
+
+            foreach (var raw in lines)
+            {
+                var line = raw?.TrimEnd() ?? "";
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                if (!HideCrafting(agent, stack) && IsCraftingTransformLine(line))
+                {
+                    kept.Add(line);
+                    continue;
+                }
+
+                if (!HideNutrition(agent, stack))
+                {
+                    if (IsNutritionOrHydrationLine(line) || IsDietaryNoveltyLine(line))
+                    {
+                        kept.Add(line);
+                        continue;
+                    }
+                }
+            }
+
+            dsc.Clear();
+            for (int i = 0; i < kept.Count; i++)
+            {
+                if (i > 0) dsc.AppendLine();
+                dsc.Append(kept[i]);
+            }
+        }
         public static void ScrubTooltipIfHidden(ItemSlot inSlot, StringBuilder dsc, IWorldAccessor world)
         {
             var agent = world.Side == EnumAppSide.Client ? (world as IClientWorldAccessor)?.Player?.Entity : null;
@@ -174,15 +240,26 @@ namespace ForagersGamble.Patches
             if (agent == null || stack == null) return;
             if (NameMaskingScope.IsActive) return;
 
-            if (HideNutrition(agent, stack))
+            var checkStack = GetKnowledgeCheckedStack(stack);
+            if (checkStack == null) return;
+
+            if (IsUnknownToPlayer(agent, checkStack))
+            {
+                WhitelistUnknownTooltip(agent, checkStack, dsc, world);
+                return;
+            }
+
+            if (HideNutrition(agent, checkStack))
             {
                 RemoveLines(dsc, l => IsNutritionOrHydrationLine(l) || IsDietaryNoveltyLine(l));
             }
-            if (IsFood(stack, world, agent) && HideCrafting(agent, stack))
+
+            if (IsFood(checkStack, world, agent) && HideCrafting(agent, checkStack))
             {
                 RemoveLines(dsc, IsCraftingTransformLine);
             }
         }
+
         static bool IsFood(ItemStack stack, IWorldAccessor world, EntityAgent agent)
         {
             return stack?.Collectible?.GetNutritionProperties(world, stack, agent as EntityPlayer) != null;
@@ -194,21 +271,17 @@ namespace ForagersGamble.Patches
             var li = line.Trim().ToLowerInvariant();
 
             if (MatchesLocalizedPrefix(line, "When ground: Turns into {0}x {1}", "When ground:")) return true;
-            if (MatchesLocalizedPrefix(line, "When pulverized: Turns into {0}x {1}", "When pulverized:"))
-                return true;
-            if (MatchesLocalizedPrefix(line, "When pulverized: Turns into {0:0.#}x {1}", "When pulverized:"))
-                return true;
+            if (MatchesLocalizedPrefix(line, "When pulverized: Turns into {0}x {1}", "When pulverized:")) return true;
+            if (MatchesLocalizedPrefix(line, "When pulverized: Turns into {0:0.#}x {1}", "When pulverized:")) return true;
 
             if (MatchesLocalizedPrefix(line, "When pressed: Turns into {0}l {1}", "When pressed:")) return true;
-            if (MatchesLocalizedPrefix(line, "When pressed: Turns into {0:0.#}l {1}", "When pressed:"))
-                return true;
+            if (MatchesLocalizedPrefix(line, "When pressed: Turns into {0:0.#}l {1}", "When pressed:")) return true;
 
             if (MatchesLocalizedPrefix(line, "When juiced: Turns into {0:0.#}l {1}", "When juiced:")) return true;
             if (MatchesLocalizedPrefix(line, "When juiced: Turns into {0:0.##}l {1}", "When juiced:")) return true;
             if (MatchesLocalizedPrefix(line, "collectibleinfo-juicingproperties", "When juiced:")) return true;
 
-            if (MatchesLocalizedPrefix(line, "Requires Pulverizer tier: {0}", "Requires Pulverizer tier:"))
-                return true;
+            if (MatchesLocalizedPrefix(line, "Requires Pulverizer tier: {0}", "Requires Pulverizer tier:")) return true;
             if (MatchesLocalizedPrefix(line, "Burn temperature: {0}°C", "Burn temperature:")) return true;
             if (MatchesLocalizedPrefix(line, "Burn duration: {0}s", "Burn duration:")) return true;
 
@@ -252,6 +325,7 @@ namespace ForagersGamble.Patches
             if (agent == null || stack == null) return;
             if (!MaskingAllowed(agent)) return;
             if (!InSurvival(agent)) return;
+
             if (stack.Collectible is BlockLiquidContainerBase blc)
             {
                 var content = blc.GetContent(stack);
@@ -274,7 +348,7 @@ namespace ForagersGamble.Patches
 
             dsc.AppendLine(line);
         }
-        
+
         static bool IsDietaryNoveltyLine(string line)
         {
             if (string.IsNullOrWhiteSpace(line)) return false;
@@ -293,12 +367,59 @@ namespace ForagersGamble.Patches
             int slash = li.LastIndexOf('/');
             return colon >= 0 && slash > colon;
         }
+        public static void ScrubPlacedBlockInfoIfHidden(Block block, IWorldAccessor world, BlockPos pos, IPlayer forPlayer, ref string info)
+        {
+            if (block == null || world == null || pos == null || forPlayer == null) return;
+            if (NameMaskingScope.IsActive) return;
+
+            var ep = forPlayer.Entity as EntityPlayer;
+            if (ep == null) return;
+
+            if (ep.Player?.WorldData?.CurrentGameMode != EnumGameMode.Survival) return;
+
+            var stack = new ItemStack(block);
+            if (Knowledge.IsKnown(ep, stack)) return;
+
+            string descLangCode = string.Concat(new string[]
+            {
+                block.Code.Domain,
+                ":",
+                block.ItemClass.ToString().ToLowerInvariant(),
+                "desc-",
+                block.Code.Path
+            });
+
+            string desc = Lang.GetMatching(descLangCode, Array.Empty<object>());
+            if (string.IsNullOrEmpty(desc) || desc == descLangCode) return;
+
+            var descLines = desc.Replace("\r\n", "\n").Split('\n')
+                .Select(l => (l ?? "").Trim())
+                .Where(l => l.Length > 0)
+                .ToHashSet(StringComparer.InvariantCultureIgnoreCase);
+
+            if (descLines.Count == 0) return;
+
+            var lines = (info ?? "").Replace("\r\n", "\n").Split('\n').ToList();
+            var kept = new List<string>(lines.Count);
+
+            foreach (var raw in lines)
+            {
+                var l = (raw ?? "").TrimEnd();
+                if (l.Length == 0) { kept.Add(l); continue; }
+                if (descLines.Contains(l.Trim())) continue;
+                kept.Add(l);
+            }
+
+            while (kept.Count > 0 && string.IsNullOrWhiteSpace(kept[0])) kept.RemoveAt(0);
+            while (kept.Count > 0 && string.IsNullOrWhiteSpace(kept[kept.Count - 1])) kept.RemoveAt(kept.Count - 1);
+
+            info = string.Join("\n", kept).TrimEnd();
+        }
     }
-    
 
     [HarmonyPatch(typeof(CollectibleObject), nameof(CollectibleObject.GetHeldItemInfo))]
     [HarmonyPriority(Priority.Last)]
-    [HarmonyAfter(new[] { "com.chronolegionnaire.hydrateordiedrate"})]
+    [HarmonyAfter(new[] { "com.chronolegionnaire.hydrateordiedrate" })]
     public static class Patch_CollectibleObject_GetHeldItemInfo
     {
         static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instrs)
