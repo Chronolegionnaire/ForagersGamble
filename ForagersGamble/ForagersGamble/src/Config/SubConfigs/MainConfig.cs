@@ -36,6 +36,11 @@ namespace ForagersGamble.Config.SubConfigs
         [Display(Name = "Hide Meal Safety")]
         [DefaultValue(true)]
         public bool HideMealSafety { get; set; } = true;
+        
+        [Category("Main")]
+        [Display(Name = "EnableNibbling")]
+        [DefaultValue(true)]
+        public bool EnableNibbling { get; set; } = true;
 
         [Category("Main")]
         [Display(Name = "Nibble Factor", Description = "Fraction of a full eat action applied when nibbling (0.0 - 1.0).")]

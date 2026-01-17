@@ -26,6 +26,7 @@ namespace ForagersGamble.Config
         private const string settingHideNutritionInfo = "foragersgamble:Config.Setting.HideNutritionInfo";
         private const string settingHideCraftingInfo = "foragersgamble:Config.Setting.HideCraftingInfo";
         private const string settingHideMealSafety = "foragersgamble:Config.Setting.HideMealSafety";
+        private const string settingEnableNibbling = "foragersgamble:Config.Setting.EnableNibbling";
         private const string settingNibbleFactor = "foragersgamble:Config.Setting.NibbleFactor";
 
         private const string settingPoisonOnset = "foragersgamble:Config.Setting.PoisonOnset";
@@ -223,6 +224,10 @@ namespace ForagersGamble.Config
             bool hideMealSafety = main.HideMealSafety;
             ImGui.Checkbox(Lang.Get(settingHideMealSafety) + $"##hideMealSafety-{id}", ref hideMealSafety);
             main.HideMealSafety = hideMealSafety;
+            
+            bool enableNibbling = main.EnableNibbling;
+            ImGui.Checkbox(Lang.Get(settingEnableNibbling) + $"##enableNibbling-{id}", ref enableNibbling);
+            main.EnableNibbling = enableNibbling;
 
             float nibble = main.NibbleFactor;
             DragFloatClamped(Lang.Get(settingNibbleFactor) + $"##nibble-{id}", ref nibble, 0.01f, 0f, 1f);

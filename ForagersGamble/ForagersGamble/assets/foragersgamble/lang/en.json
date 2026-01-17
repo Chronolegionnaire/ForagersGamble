@@ -11,6 +11,7 @@
   "foragersgamble:Config.Setting.HideNutritionInfo": "Hide Nutrition Info",
   "foragersgamble:Config.Setting.HideCraftingInfo": "Hide Crafting Info",
   "foragersgamble:Config.Setting.HideMealSafety": "Hide Meal Safety",
+  "foragersgamble:Config.Setting.EnableNibbling": "Enable or Disable Nibbling",
   "foragersgamble:Config.Setting.NibbleFactor": "Nibble Factor (0–1)",
 
   "foragersgamble:Config.Setting.PoisonOnset": "Delayed Poison Onset",

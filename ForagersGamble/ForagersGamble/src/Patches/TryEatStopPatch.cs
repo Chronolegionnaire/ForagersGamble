@@ -219,7 +219,9 @@ namespace ForagersGamble.Patches
 
                     if (wasNibble && slot?.Itemstack != null)
                     {
-                        float factor = ModConfig.Instance.Main.NibbleFactor;
+                        float factor = ModConfig.Instance.Main.EnableNibbling
+                            ? ModConfig.Instance.Main.NibbleFactor
+                            : 1f;
                         float deltaMul = factor - 1f;
                         if (Math.Abs(deltaMul) > 0f)
                         {
