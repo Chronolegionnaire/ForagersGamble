@@ -295,6 +295,11 @@ namespace ForagersGamble
                             {
                                 set.Add(fcode);
                                 set.Add(Norm(fcode));
+
+                                AddDerivEdge(bcode, fcode);
+                                AddDerivEdge(Norm(bcode), Norm(fcode));
+                                AddDerivEdge(bcode, Norm(fcode));
+                                AddDerivEdge(Norm(bcode), fcode);
                             }
                         }
                     }
@@ -326,6 +331,14 @@ namespace ForagersGamble
                             {
                                 set.Add(fcode);
                                 set.Add(Norm(fcode));
+
+                                if (!string.IsNullOrEmpty(bcode))
+                                {
+                                    AddDerivEdge(bcode, fcode);
+                                    AddDerivEdge(Norm(bcode), Norm(fcode));
+                                    AddDerivEdge(bcode, Norm(fcode));
+                                    AddDerivEdge(Norm(bcode), fcode);
+                                }
                             }
                         }
                     }
@@ -688,7 +701,6 @@ namespace ForagersGamble
             s_derivativeToBase = derivativeToBase;
             s_baseToDerivatives = baseToDerivatives;
         }
-
         private static string Norm(string code)
         {
             if (string.IsNullOrEmpty(code)) return code;
