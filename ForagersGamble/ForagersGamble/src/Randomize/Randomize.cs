@@ -24,15 +24,19 @@ namespace ForagersGamble.Randomize
         }
         private static readonly string[] CookStates = { "partbaked", "perfect", "charred" };
 
-        private static bool TryParseFamily(AssetLocation code, out string familyId, out string formKey,
-            out string cookState, out bool isBase)
+        private static bool TryParseFamily(
+            AssetLocation code,
+            out string familyId,
+            out string formKey,
+            out string cookState,
+            out bool isBase)
         {
             familyId = formKey = cookState = null;
             isBase = false;
             if (code == null || string.IsNullOrWhiteSpace(code.Path)) return false;
 
-            var domain = code.Domain ?? "game";
             var path = code.Path;
+
             static string NormTok(string s)
             {
                 if (string.IsNullOrWhiteSpace(s)) return s;
@@ -45,6 +49,9 @@ namespace ForagersGamble.Randomize
                     s = s.Substring(0, s.Length - 1);
                 return s;
             }
+            static bool IsCookState(string tok) =>
+                !string.IsNullOrWhiteSpace(tok) &&
+                CookStates.Any(s => s.Equals(tok, StringComparison.OrdinalIgnoreCase));
             if (path.StartsWith("mushroom-", StringComparison.OrdinalIgnoreCase))
             {
                 var segs = path.Split('-');
@@ -53,7 +60,7 @@ namespace ForagersGamble.Randomize
                     var name = NormTok(segs[1]);
                     familyId = $"mushroom:{name}";
                     isBase = path.IndexOf("normal", StringComparison.OrdinalIgnoreCase) >= 0 || segs.Length == 2;
-                    formKey = isBase ? "raw" : "raw";
+                    formKey = "raw";
                     cookState = null;
                     return true;
                 }
@@ -65,7 +72,7 @@ namespace ForagersGamble.Randomize
                 {
                     var name = NormTok(segs[1]);
                     var last = segs[^1];
-                    cookState = CookStates.Any(s => s.Equals(last, StringComparison.OrdinalIgnoreCase)) ? last : null;
+                    cookState = IsCookState(last) ? last : null;
                     familyId = $"mushroom:{name}";
                     formKey = "cooked";
                     isBase = false;
@@ -77,10 +84,11 @@ namespace ForagersGamble.Randomize
                 var segs = path.Split('-');
                 if (segs.Length >= 2)
                 {
+                    var last = segs[^1];
+                    cookState = IsCookState(last) ? last : null;
                     var name = NormTok(segs[1]);
                     familyId = $"mushroom:{name}";
                     formKey = "chopped";
-                    cookState = null;
                     isBase = false;
                     return true;
                 }
@@ -92,7 +100,7 @@ namespace ForagersGamble.Randomize
                 {
                     var name = NormTok(segs[1]);
                     var last = segs[^1];
-                    cookState = CookStates.Any(s => s.Equals(last, StringComparison.OrdinalIgnoreCase)) ? last : null;
+                    cookState = IsCookState(last) ? last : null;
                     familyId = $"mushroom:{name}";
                     formKey = "cookedchopped";
                     isBase = false;
@@ -120,7 +128,7 @@ namespace ForagersGamble.Randomize
                 {
                     var name = NormTok(segs[1]);
                     var last = segs[^1];
-                    cookState = CookStates.Any(s => s.Equals(last, StringComparison.OrdinalIgnoreCase)) ? last : null;
+                    cookState = IsCookState(last) ? last : null;
                     familyId = $"vegetable:{name}";
                     formKey = "cooked";
                     isBase = false;
@@ -132,10 +140,11 @@ namespace ForagersGamble.Randomize
                 var segs = path.Split('-');
                 if (segs.Length >= 2)
                 {
+                    var last = segs[^1];
+                    cookState = IsCookState(last) ? last : null;
                     var name = NormTok(segs[1]);
                     familyId = $"vegetable:{name}";
                     formKey = "chopped";
-                    cookState = null;
                     isBase = false;
                     return true;
                 }
@@ -147,7 +156,7 @@ namespace ForagersGamble.Randomize
                 {
                     var name = NormTok(segs[1]);
                     var last = segs[^1];
-                    cookState = CookStates.Any(s => s.Equals(last, StringComparison.OrdinalIgnoreCase)) ? last : null;
+                    cookState = IsCookState(last) ? last : null;
                     familyId = $"vegetable:{name}";
                     formKey = "cookedchopped";
                     isBase = false;
@@ -191,7 +200,6 @@ namespace ForagersGamble.Randomize
                     return true;
                 }
             }
-
             static string NormalizeFormRoot(string root) => root switch
             {
                 "juiceportion" => "juice",
@@ -227,7 +235,6 @@ namespace ForagersGamble.Randomize
                         return !string.IsNullOrWhiteSpace(token);
                     }
                 }
-
                 return false;
             }
             bool TrailingRoot(string[] roots, out string root, out string token)
@@ -242,7 +249,6 @@ namespace ForagersGamble.Randomize
                         return !string.IsNullOrWhiteSpace(token);
                     }
                 }
-
                 return false;
             }
             if (LeadingRoot(fruitLiquidRoots, out var rootF, out var tokF) ||
@@ -297,7 +303,6 @@ namespace ForagersGamble.Randomize
                 return true;
             }
 
-
             return false;
         }
 
@@ -317,7 +322,6 @@ namespace ForagersGamble.Randomize
             var candidatesByGroup = new Dictionary<string, List<Slot>>(StringComparer.OrdinalIgnoreCase);
             var vanillaByFamily = new Dictionary<string, Dictionary<string, float>>(StringComparer.OrdinalIgnoreCase);
 
-            int nonLiquidCount = 0, liquidCount = 0;
             int nonZeroFound = 0;
 
             static string GroupKeyFor(AssetLocation code)
@@ -342,13 +346,10 @@ namespace ForagersGamble.Randomize
                 if (obj.NutritionProps != null)
                 {
                     float h = obj.NutritionProps.Health;
-                    bool hadHealth = Math.Abs(h) > float.Epsilon;
-                    bool isHealing = h > 0f;
-                    bool eligible = !isHealing || randomizeHealing;
-
-                    if (hadHealth && eligible)
+                    if (inFamily)
                     {
-                        if (inFamily)
+                        bool includeInPattern = h <= 0f || randomizeHealing;
+                        if (includeInPattern)
                         {
                             var vmap = vanillaByFamily.TryGetValue(famId, out var m)
                                 ? m
@@ -358,12 +359,16 @@ namespace ForagersGamble.Randomize
                             vmap[VariantKey(formKey, cookState)] = h;
                             if (isBase) vmap["raw"] = h;
                         }
-
+                    }
+                    bool hadNonZeroHealth = Math.Abs(h) > float.Epsilon;
+                    bool isHealing = h > 0f;
+                    bool eligible = !isHealing || randomizeHealing;
+                    if (hadNonZeroHealth && eligible)
+                    {
                         obj.NutritionProps.Health = 0f;
                         nonZeroFound++;
                     }
-
-                    if (eligible || !hadHealth)
+                    if (eligible || !hadNonZeroHealth)
                     {
                         var slot = new Slot
                         {
@@ -371,7 +376,7 @@ namespace ForagersGamble.Randomize
                             IsLiquid = false,
                             GroupKey = group,
                             TargetFoodProps = obj.NutritionProps,
-                            HadHealthField = hadHealth,
+                            HadHealthField = hadNonZeroHealth,
                             FamilyId = inFamily ? famId : null,
                             FormKey = inFamily ? formKey : null,
                             CookState = inFamily ? cookState : null,
@@ -384,8 +389,6 @@ namespace ForagersGamble.Randomize
                             var flist = GetList(candidatesByFamily, famId);
                             flist.Add(slot);
                         }
-
-                        nonLiquidCount++;
                     }
                 }
                 var attrObj = obj.Attributes?.Token as JObject;
@@ -393,14 +396,14 @@ namespace ForagersGamble.Randomize
                 if (perLitre != null)
                 {
                     var tok = perLitre["health"];
-                    bool hadHealth = tok != null && (tok.Type == JTokenType.Integer || tok.Type == JTokenType.Float);
-                    float h = hadHealth ? (float)tok : 0f;
-                    bool isHealing = hadHealth && h > 0f;
-                    bool eligible = !isHealing || randomizeHealing;
+                    bool hadField =
+                        tok != null && (tok.Type == JTokenType.Integer || tok.Type == JTokenType.Float);
+                    float h = hadField ? (float)tok : 0f;
 
-                    if (hadHealth && eligible)
+                    if (inFamily)
                     {
-                        if (Math.Abs(h) > float.Epsilon && inFamily)
+                        bool includeInPattern = h <= 0f || randomizeHealing;
+                        if (includeInPattern)
                         {
                             var vmap = vanillaByFamily.TryGetValue(famId, out var m)
                                 ? m
@@ -410,7 +413,11 @@ namespace ForagersGamble.Randomize
                             vmap[VariantKey(formKey, cookState)] = h;
                             if (isBase) vmap["raw"] = h;
                         }
-
+                    }
+                    bool isHealing = hadField && h > 0f;
+                    bool eligible = !isHealing || randomizeHealing;
+                    if (hadField && eligible && Math.Abs(h) > float.Epsilon)
+                    {
                         perLitre["health"] = 0f;
                         nonZeroFound++;
                     }
@@ -419,7 +426,7 @@ namespace ForagersGamble.Randomize
                     if (obj.NutritionProps == null) obj.NutritionProps = target;
                     if (eligible) target.Health = 0f;
 
-                    if (eligible || !hadHealth)
+                    if (eligible || !hadField)
                     {
                         var slot = new Slot
                         {
@@ -428,7 +435,7 @@ namespace ForagersGamble.Randomize
                             GroupKey = group,
                             TargetFoodProps = target,
                             LiquidPerLitreNode = perLitre,
-                            HadHealthField = hadHealth,
+                            HadHealthField = hadField,
                             FamilyId = inFamily ? famId : null,
                             FormKey = inFamily ? formKey : null,
                             CookState = inFamily ? cookState : null,
@@ -441,8 +448,6 @@ namespace ForagersGamble.Randomize
                             var flist = GetList(candidatesByFamily, famId);
                             flist.Add(slot);
                         }
-
-                        liquidCount++;
                     }
                 }
             }
@@ -452,18 +457,20 @@ namespace ForagersGamble.Randomize
 
             var rngA = new Random(seed32 ^ 0x5F3759DF);
 
-            int assignedTotal = 0, assignedLiquids = 0, assignedNonLiquids = 0;
-            var familiesByGroup = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var (famId, slots) in candidatesByFamily)
+            static string FamilyGroup(string famId)
             {
-                var g = slots.FirstOrDefault()?.GroupKey ?? "unknown";
-                if (!familiesByGroup.TryGetValue(g, out var fl))
-                {
-                    fl = new List<string>();
-                    familiesByGroup[g] = fl;
-                }
+                if (string.IsNullOrEmpty(famId)) return "unknown";
+                int i = famId.IndexOf(':');
+                return i > 0 ? famId[..i] : famId;
+            }
 
-                if (!fl.Contains(famId)) fl.Add(famId);
+            var familiesByGroup = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (famId, _slots) in candidatesByFamily)
+            {
+                var g = FamilyGroup(famId);
+                if (!familiesByGroup.TryGetValue(g, out var fl))
+                    familiesByGroup[g] = fl = new List<string>();
+                fl.Add(famId);
             }
 
             foreach (var (group, famListInGroup) in familiesByGroup)
@@ -506,12 +513,12 @@ namespace ForagersGamble.Randomize
                     var recFamId = participants[i];
                     var donorFamId = donorOrder[i];
 
-                    if (!candidatesByFamily.TryGetValue(recFamId, out var recSlots) || recSlots == null ||
-                        recSlots.Count == 0)
+                    if (!candidatesByFamily.TryGetValue(recFamId, out var recSlots) ||
+                        recSlots == null || recSlots.Count == 0)
                         continue;
 
-                    if (!vanillaByFamily.TryGetValue(donorFamId, out var donorMap) || donorMap == null ||
-                        donorMap.Count == 0)
+                    if (!vanillaByFamily.TryGetValue(donorFamId, out var donorMap) ||
+                        donorMap == null || donorMap.Count == 0)
                         continue;
 
                     foreach (var slot in recSlots)
