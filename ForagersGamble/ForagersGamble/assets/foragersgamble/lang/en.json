@@ -7,6 +7,9 @@
   "foragersgamble:Config.Setting.UnknownAll": "Unknown All",
   "foragersgamble:Config.Setting.UnknownMushrooms": "Unknown Mushrooms",
   "foragersgamble:Config.Setting.UnknownPlants": "Unknown Plants",
+  "foragersgamble:Config.Setting.UnknownFruits": "Unknown Fruits",
+  "foragersgamble:Config.Setting.UnknownVegetables": "Unknown Vegetables",
+  "foragersgamble:Config.Setting.UnknownGrains": "Unknown Grains",
   "foragersgamble:Config.Setting.ForgetOnDeath": "Forget On Death",
   "foragersgamble:Config.Setting.HideNutritionInfo": "Hide Nutrition Info",
   "foragersgamble:Config.Setting.HideCraftingInfo": "Hide Crafting Info",
@@ -17,10 +20,14 @@
   "foragersgamble:Config.Setting.PoisonOnset": "Delayed Poison Onset",
   "foragersgamble:Config.Setting.PoisonOnsetMin": "Poison Onset Min (hours, in-game)",
   "foragersgamble:Config.Setting.PoisonOnsetMax": "Poison Onset Max (hours, in-game)",
+  "foragersgamble:Config.Setting.PsychedelicOnset": "Delayed Psychedelic Onset",
+  "foragersgamble:Config.Setting.PsychedelicOnsetMin": "Psychedelic Onset Min (hours, in-game)",
+  "foragersgamble:Config.Setting.PsychedelicOnsetMax": "Psychedelic Onset Max (hours, in-game)",
   "foragersgamble:Config.Setting.InstantDeathThreshold": "Instant Death Threshold",
   "foragersgamble:Config.Setting.ShowFoodInWarning": "Show what caused poison in damage text",
   "foragersgamble:Config.Setting.ShuffleDamagingItems": "Shuffle Damaging Items",
   "foragersgamble:Config.Setting.ShuffleHealingItems": "Shuffle Healing Items",
+  "foragersgamble:Config.Setting.ShufflePsychedelicItems": "Shuffle Psychedelic Items",
 
   "foragersgamble:Config.Setting.DeadJimChance": "Easter Egg Chance (≥50 dmg)",
 
@@ -75,6 +82,15 @@
   "foragersgamble:poison.warn.15to49.plain": "Your vision tunnels as the poison overtakes you.",
   "foragersgamble:poison.warn.50plus.plain": "Your body seizes—the poison is overwhelming.",
 
+  "foragersgamble:psychedelic.warn.low": "You begin to feel strange.",
+  "foragersgamble:psychedelic.warn.low.plain": "You begin to feel strange.",
+
+  "foragersgamble:psychedelic.warn.medium": "The effects of {0} begin to wash over you.",
+  "foragersgamble:psychedelic.warn.medium.plain": "The effects begin to wash over you.",
+
+  "foragersgamble:psychedelic.warn.high": "A powerful wave from {0} crashes over your mind.",
+  "foragersgamble:psychedelic.warn.high.plain": "A powerful wave crashes over your mind.",
+  
   "foragersgamble:poison.warn.instant": "Your veins burn as a surge of poison floods your body at once.",
   "foragersgamble:poison.warn.deadjim": "He's dead, Jim.",
 

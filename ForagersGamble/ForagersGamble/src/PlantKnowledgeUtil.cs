@@ -35,6 +35,27 @@ public static class PlantKnowledgeUtil
         "tile", "claytile", "brick", "plank", "wood", "stone", "granite", "basalt", "limestone", "sandstone",
         "metal", "copper", "tin", "bronze", "iron", "steel", "cloth", "linen", "wool", "glass", "paper"
     };
+    
+    private static readonly string[] ProduceFamilyPrefixes =
+    {
+        "fruit-", "vegetable-", "grain-", "nut-", "legume-"
+    };
+
+    internal static readonly HashSet<string> ProduceVariantWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "wild",
+        "small",
+        "medium",
+        "decent",
+        "large",
+        "hefty",
+        "gigantic",
+        "tiny",
+        "mini",
+        "massive",
+        "huge",
+        "giant"
+    };
 
     public static bool TryResolveReferenceFruit(ICoreAPI api, CollectibleObject coll, ItemStack heldStack,
         out ItemStack fruitStack)
@@ -69,9 +90,66 @@ public static class PlantKnowledgeUtil
             }
         }
 
-        if (TryFruitViaReflection(api, block, out fruitStack)) return true;
-        if (TryFruitViaNutritionProps(api, attribs, out fruitStack)) return true;
-        if (TryGuessFruitFromCode(api, block, out fruitStack)) return true;
+        if (TryFruitViaReflection(api, block, out fruitStack))
+            return TryCanonicalizeProduceStack(api, fruitStack, out fruitStack);
+
+        if (TryFruitViaNutritionProps(api, attribs, out fruitStack))
+            return TryCanonicalizeProduceStack(api, fruitStack, out fruitStack);
+
+        if (TryGuessFruitFromCode(api, block, out fruitStack))
+            return TryCanonicalizeProduceStack(api, fruitStack, out fruitStack);
+
+        return false;
+    }
+    
+    private static bool TryCanonicalizeProduceStack(ICoreAPI api, ItemStack stack, out ItemStack canonicalStack)
+    {
+        canonicalStack = stack;
+        if (api?.World == null || stack?.Collectible?.Code == null) return stack?.Collectible != null;
+
+        var code = stack.Collectible.Code;
+        if (TryResolveCanonicalProduceCode(api, code.Path ?? "", code.Domain, out var resolved))
+        {
+            canonicalStack = resolved;
+            return true;
+        }
+
+        return canonicalStack?.Collectible != null;
+    }
+
+    private static bool TryResolveCanonicalProduceCode(
+        ICoreAPI api,
+        string codePath,
+        string preferredDomain,
+        out ItemStack baseProduce)
+    {
+        baseProduce = null;
+        if (api?.World == null || string.IsNullOrWhiteSpace(codePath)) return false;
+
+        foreach (var familyPrefix in ProduceFamilyPrefixes)
+        {
+            if (!codePath.StartsWith(familyPrefix, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var token = codePath.Substring(familyPrefix.Length).Trim('-', '_', '.');
+            if (string.IsNullOrWhiteSpace(token))
+                return false;
+
+            token = NormalizeProduceToken(token);
+
+            var segs = token.Split('-', StringSplitOptions.RemoveEmptyEntries);
+            if (segs.Length >= 2 && ProduceVariantWords.Contains(segs[0]))
+            {
+                var unsizedToken = NormalizeProduceToken(string.Join("-", segs, 1, segs.Length - 1));
+                if (!string.IsNullOrWhiteSpace(unsizedToken) &&
+                    TryMakeBase(api, familyPrefix, unsizedToken, out baseProduce, preferredDomain))
+                {
+                    return true;
+                }
+            }
+            return TryMakeBase(api, familyPrefix, token, out baseProduce, preferredDomain);
+        }
+
         return false;
     }
 
@@ -149,8 +227,7 @@ public static class PlantKnowledgeUtil
             codePath.StartsWith("nut-", StringComparison.OrdinalIgnoreCase) ||
             codePath.StartsWith("legume-", StringComparison.OrdinalIgnoreCase))
         {
-            baseProduce = stack;
-            return true;
+            return TryCanonicalizeProduceStack(api, stack, out baseProduce);
         }
 
         return false;
@@ -929,7 +1006,11 @@ public static class PlantKnowledgeUtil
                         if (it2 != null)
                         {
                             var t2 = new ItemStack(it2);
-                            if (IsEdible(it2.GetNutritionProperties(api.World, t2, agent))) return t2;
+                            if (IsEdible(it2.GetNutritionProperties(api.World, t2, agent)))
+                            {
+                                TryCanonicalizeProduceStack(api, t2, out t2);
+                                return t2;
+                            }
                         }
                     }
                     else
@@ -938,7 +1019,11 @@ public static class PlantKnowledgeUtil
                         if (bl2 != null)
                         {
                             var t2 = new ItemStack(bl2);
-                            if (IsEdible(bl2.GetNutritionProperties(api.World, t2, agent))) return t2;
+                            if (IsEdible(bl2.GetNutritionProperties(api.World, t2, agent)))
+                            {
+                                TryCanonicalizeProduceStack(api, t2, out t2);
+                                return t2;
+                            }
                         }
                     }
                 }
@@ -946,7 +1031,10 @@ public static class PlantKnowledgeUtil
                 if (TryResolveReferenceFruit(api, bush, new ItemStack(bush), out var viaBushFruit))
                 {
                     if (IsEdible(viaBushFruit.Collectible.GetNutritionProperties(api.World, viaBushFruit, agent)))
+                    {
+                        TryCanonicalizeProduceStack(api, viaBushFruit, out viaBushFruit);
                         return viaBushFruit;
+                    }
                 }
             }
         }
@@ -963,6 +1051,7 @@ public static class PlantKnowledgeUtil
                 if (test?.Collectible != null &&
                     IsEdible(test.Collectible.GetNutritionProperties(api.World, test, agent)))
                 {
+                    TryCanonicalizeProduceStack(api, test, out test);
                     return test;
                 }
             }
@@ -970,7 +1059,10 @@ public static class PlantKnowledgeUtil
             if (TryResolveReferenceFruit(api, bush2, new ItemStack(bush2), out var viaBushFruit))
             {
                 if (IsEdible(viaBushFruit.Collectible.GetNutritionProperties(api.World, viaBushFruit, agent)))
+                {
+                    TryCanonicalizeProduceStack(api, viaBushFruit, out viaBushFruit);
                     return viaBushFruit;
+                }
             }
         }
 
@@ -982,7 +1074,11 @@ public static class PlantKnowledgeUtil
                 if (it != null)
                 {
                     var test = new ItemStack(it);
-                    if (IsEdible(it.GetNutritionProperties(api.World, test, agent))) return test;
+                    if (IsEdible(it.GetNutritionProperties(api.World, test, agent)))
+                    {
+                        TryCanonicalizeProduceStack(api, test, out test);
+                        return test;
+                    }
                 }
             }
             else
@@ -991,7 +1087,11 @@ public static class PlantKnowledgeUtil
                 if (bl != null)
                 {
                     var test = new ItemStack(bl);
-                    if (IsEdible(bl.GetNutritionProperties(api.World, test, agent))) return test;
+                    if (IsEdible(bl.GetNutritionProperties(api.World, test, agent)))
+                    {
+                        TryCanonicalizeProduceStack(api, test, out test);
+                        return test;
+                    }
                 }
             }
         }
@@ -1029,7 +1129,10 @@ public static class PlantKnowledgeUtil
                 {
                     var t = new ItemStack(item);
                     if (IsEdible(item.GetNutritionProperties(api.World, t, agent)))
+                    {
+                        TryCanonicalizeProduceStack(api, t, out t);
                         return t;
+                    }
                 }
 
                 var block = api.World.GetBlock(candidate);
@@ -1037,7 +1140,10 @@ public static class PlantKnowledgeUtil
                 {
                     var t = new ItemStack(block);
                     if (IsEdible(block.GetNutritionProperties(api.World, t, agent)))
+                    {
+                        TryCanonicalizeProduceStack(api, t, out t);
                         return t;
+                    }
                 }
             }
         }

@@ -15,6 +15,7 @@ namespace ForagersGamble.Patches
         public const string AttrRoot       = "foragersGamble";
         public const string NibbleIntent   = "nibbleIntent";
         public const string LastEatItemKey = "FG.LastEatItemKey";
+        public const string PsycheBefore   = "FG.PsycheBefore";
     }
     [HarmonyPatch(typeof(CollectibleObject), "tryEatStop",
         new Type[] { typeof(float), typeof(ItemSlot), typeof(EntityAgent) })]
@@ -140,6 +141,8 @@ namespace ForagersGamble.Patches
                 wat?.SetString(NibbleKeys.LastEatItemKey, null);
                 byEntity.Attributes?.MarkPathDirty(NibbleKeys.LastEatItemKey);
 
+                PsychedelicOnsetInterceptor.CaptureBefore(byEntity, NibbleKeys.PsycheBefore);
+
                 string key = null;
 
                 if (slot?.Itemstack != null)
@@ -202,13 +205,15 @@ namespace ForagersGamble.Patches
                         }
                     }
 
+                    PsychedelicOnsetInterceptor.ProcessAfterEat(byEntity, NibbleKeys.PsycheBefore, key);
+
                     if (!string.IsNullOrEmpty(key))
                     {
                         var cfg = Config.ModConfig.Instance?.Main;
-                        float amt    = Math.Max(0f, Math.Min(1f, cfg?.LearnAmountPerEat ?? 0.20f));
+                        float amt = Math.Max(0f, Math.Min(1f, cfg?.LearnAmountPerEat ?? 0.20f));
 
                         if (amt > 0f)
-                        { 
+                        {
                             bool nowDiscovered = Knowledge.AddProgress(byEntity, key, amt);
                             if (nowDiscovered)
                             {
@@ -246,6 +251,7 @@ namespace ForagersGamble.Patches
                     }
 
                     wat?.SetString(NibbleKeys.LastEatItemKey, null);
+                    PsychedelicOnsetInterceptor.ClearCapture(byEntity, NibbleKeys.PsycheBefore);
 
                     byEntity?.Attributes?.MarkPathDirty(NibbleKeys.AttrRoot);
                     byEntity?.Attributes?.MarkPathDirty(NibbleKeys.LastEatItemKey);

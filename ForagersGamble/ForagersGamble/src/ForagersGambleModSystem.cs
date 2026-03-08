@@ -34,6 +34,7 @@ public class ForagersGambleModSystem : ModSystem
 	{
 		base.Start(api);
 		api.RegisterEntityBehaviorClass("fgDelayedPoison", typeof(EntityBehaviorDelayedPoison));
+		api.RegisterEntityBehaviorClass("fgDelayedPsychedelic", typeof(EntityBehaviorDelayedPsychedelic));
 		api.RegisterItemClass("ItemKnowledgeBook", typeof(ItemKnowledgeBook));
 	}
 	public override void AssetsFinalize(ICoreAPI api)
@@ -62,9 +63,27 @@ public class ForagersGambleModSystem : ModSystem
 				..fgBehaviors
 			];
 		}
+		if (Config.ModConfig.Instance.Main.PsychedelicOnset)
+		{
+			var playerEntity = api.World.GetEntityType(new AssetLocation("game", "player"));
+
+			var fgBehaviors = new List<JsonObject>(1)
+			{
+				new(new JObject { ["code"] = "fgDelayedPsychedelic" })
+			};
+
+			playerEntity.Server.BehaviorsAsJsonObj = [
+				..playerEntity.Server.BehaviorsAsJsonObj,
+				..fgBehaviors
+			];
+			playerEntity.Client.BehaviorsAsJsonObj = [
+				..playerEntity.Client.BehaviorsAsJsonObj,
+				..fgBehaviors
+			];
+		}
 		if (Config.ModConfig.Instance?.Main?.ShuffleDamagingItems == true)
 		{
-			new ForagersGamble.Randomize.Randomizer().RandomizeFoodHealth(api);
+			new ForagersGamble.Randomize.Randomizer().RandomizeFoodAttributes(api);
 		}
 	}
 	public override void StartServerSide(ICoreServerAPI sapi)
@@ -73,8 +92,12 @@ public class ForagersGambleModSystem : ModSystem
 
 		sapi.Event.PlayerDeath += (player, damageSource) =>
 		{
-			var beh = player?.Entity?.GetBehavior<EntityBehaviorDelayedPoison>();
-			beh?.ClearAll();
+			var poisonBeh = player?.Entity?.GetBehavior<EntityBehaviorDelayedPoison>();
+			poisonBeh?.ClearAll();
+
+			var psychBeh = player?.Entity?.GetBehavior<EntityBehaviorDelayedPsychedelic>();
+			psychBeh?.ClearAll();
+
 			if (ModConfig.Instance?.Main?.ForgetOnDeath == true)
 			{
 				Knowledge.ForgetAll(player);

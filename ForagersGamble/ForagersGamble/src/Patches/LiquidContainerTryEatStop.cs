@@ -17,6 +17,7 @@ namespace ForagersGamble.Patches
         public const string AttrRoot       = "foragersGamble";
         public const string NibbleIntent   = "nibbleIntent";
         public const string LastEatItemKey = "FG.LastEatItemKey";
+        public const string PsycheBefore   = "FG.PsycheBefore";
     }
     [HarmonyPatch(typeof(BlockLiquidContainerBase), "tryEatStop",
         new Type[] { typeof(float), typeof(ItemSlot), typeof(EntityAgent) })]
@@ -141,6 +142,9 @@ namespace ForagersGamble.Patches
                 var wat = byEntity.WatchedAttributes;
                 wat?.SetString(NibbleLiquidKeys.LastEatItemKey, null);
                 byEntity.Attributes?.MarkPathDirty(NibbleLiquidKeys.LastEatItemKey);
+
+                PsychedelicOnsetInterceptor.CaptureBefore(byEntity, NibbleLiquidKeys.PsycheBefore);
+
                 ItemStack consumedStack = null;
 
                 if (slot?.Itemstack != null && __instance != null)
@@ -200,6 +204,8 @@ namespace ForagersGamble.Patches
                     if (consumed != null) key = Knowledge.ItemKey(consumed);
                     else if (slot?.Itemstack != null) key = Knowledge.ItemKey(slot.Itemstack);
                 }
+
+                PsychedelicOnsetInterceptor.ProcessAfterEat(byEntity, NibbleLiquidKeys.PsycheBefore, key);
 
                 var cfg = ModConfig.Instance?.Main;
                 float amt = Math.Max(0f, Math.Min(1f, cfg?.LearnAmountPerEat ?? 0.20f));
@@ -275,6 +281,7 @@ namespace ForagersGamble.Patches
                     }
 
                     wat?.SetString(NibbleLiquidKeys.LastEatItemKey, null);
+                    PsychedelicOnsetInterceptor.ClearCapture(byEntity, NibbleLiquidKeys.PsycheBefore);
 
                     byEntity?.Attributes?.MarkPathDirty(NibbleLiquidKeys.AttrRoot);
                     byEntity?.Attributes?.MarkPathDirty(NibbleLiquidKeys.LastEatItemKey);

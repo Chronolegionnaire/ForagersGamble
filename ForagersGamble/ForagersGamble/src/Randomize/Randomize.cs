@@ -16,7 +16,10 @@ namespace ForagersGamble.Randomize
             public string GroupKey { get; init; }
             public FoodNutritionProperties TargetFoodProps { get; init; }
             public JObject LiquidPerLitreNode { get; init; }
+
             public bool HadHealthField { get; init; }
+            public bool HadPsychedelicField { get; init; }
+
             public string FamilyId { get; init; }
             public string FormKey { get; init; }
             public string CookState { get; init; }
@@ -310,20 +313,21 @@ namespace ForagersGamble.Randomize
             => string.IsNullOrEmpty(cookState) ? formKey ?? "" : $"{formKey}:{cookState}";
 
         bool randomizeHealing = ModConfig.Instance?.Main?.ShuffleHealingItems == true;
+        bool randomizePsychedelics = ModConfig.Instance?.Main?.ShufflePsychedelicItems == true;
         static bool ShouldIgnore(AssetLocation code) =>
             code != null && string.Equals(code.Domain, "hydrateordiedrate", StringComparison.OrdinalIgnoreCase);
 
-        public void RandomizeFoodHealth(ICoreAPI api)
+        public void RandomizeFoodAttributes(ICoreAPI api)
         {
             if (api?.World?.Collectibles == null) return;
 
             int seed32 = (int)(api.World.Seed & 0x7FFFFFFF);
             var candidatesByFamily = new Dictionary<string, List<Slot>>(StringComparer.OrdinalIgnoreCase);
             var candidatesByGroup = new Dictionary<string, List<Slot>>(StringComparer.OrdinalIgnoreCase);
-            var vanillaByFamily = new Dictionary<string, Dictionary<string, float>>(StringComparer.OrdinalIgnoreCase);
-
+            var vanillaHealthByFamily  = new Dictionary<string, Dictionary<string, float>>(StringComparer.OrdinalIgnoreCase);
+            var vanillaPsychedelicByFamily = new Dictionary<string, Dictionary<string, float>>(StringComparer.OrdinalIgnoreCase);
             int nonZeroFound = 0;
-
+            int psychedelicFound = 0;
             static string GroupKeyFor(AssetLocation code)
             {
                 if (code == null) return "unknown";
@@ -351,9 +355,9 @@ namespace ForagersGamble.Randomize
                         bool includeInPattern = h <= 0f || randomizeHealing;
                         if (includeInPattern)
                         {
-                            var vmap = vanillaByFamily.TryGetValue(famId, out var m)
+                            var vmap = vanillaHealthByFamily .TryGetValue(famId, out var m)
                                 ? m
-                                : (vanillaByFamily[famId] =
+                                : (vanillaHealthByFamily [famId] =
                                     new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase));
 
                             vmap[VariantKey(formKey, cookState)] = h;
@@ -368,7 +372,32 @@ namespace ForagersGamble.Randomize
                         obj.NutritionProps.Health = 0f;
                         nonZeroFound++;
                     }
-                    if (eligible || !hadNonZeroHealth)
+                    float p = obj.NutritionProps.Psychedelic;
+                    bool hadNonZeroPsychedelic = Math.Abs(p) > float.Epsilon;
+
+                    if (inFamily)
+                    {
+                        if (hadNonZeroPsychedelic && randomizePsychedelics)
+                        {
+                            var pmap = vanillaPsychedelicByFamily.TryGetValue(famId, out var pm)
+                                ? pm
+                                : (vanillaPsychedelicByFamily[famId] =
+                                    new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase));
+
+                            pmap[VariantKey(formKey, cookState)] = p;
+                            if (isBase) pmap["raw"] = p;
+                        }
+                    }
+
+                    if (hadNonZeroPsychedelic && randomizePsychedelics)
+                    {
+                        obj.NutritionProps.Psychedelic = 0f;
+                        psychedelicFound++;
+                    }
+                    bool healthParticipates = eligible || !hadNonZeroHealth;
+                    bool psychedelicParticipates = randomizePsychedelics && (hadNonZeroPsychedelic || inFamily);
+
+                    if (healthParticipates || psychedelicParticipates)
                     {
                         var slot = new Slot
                         {
@@ -377,12 +406,12 @@ namespace ForagersGamble.Randomize
                             GroupKey = group,
                             TargetFoodProps = obj.NutritionProps,
                             HadHealthField = hadNonZeroHealth,
+                            HadPsychedelicField = hadNonZeroPsychedelic,
                             FamilyId = inFamily ? famId : null,
                             FormKey = inFamily ? formKey : null,
                             CookState = inFamily ? cookState : null,
                             IsBase = inFamily && isBase
                         };
-
                         groupList.Add(slot);
                         if (inFamily)
                         {
@@ -405,9 +434,9 @@ namespace ForagersGamble.Randomize
                         bool includeInPattern = h <= 0f || randomizeHealing;
                         if (includeInPattern)
                         {
-                            var vmap = vanillaByFamily.TryGetValue(famId, out var m)
+                            var vmap = vanillaHealthByFamily .TryGetValue(famId, out var m)
                                 ? m
-                                : (vanillaByFamily[famId] =
+                                : (vanillaHealthByFamily [famId] =
                                     new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase));
 
                             vmap[VariantKey(formKey, cookState)] = h;
@@ -425,8 +454,37 @@ namespace ForagersGamble.Randomize
                     var target = obj.NutritionProps ?? new FoodNutritionProperties();
                     if (obj.NutritionProps == null) obj.NutritionProps = target;
                     if (eligible) target.Health = 0f;
+                    var pTok = perLitre["psychedelic"];
+                    bool hadPsychedelicField =
+                        pTok != null && (pTok.Type == JTokenType.Integer || pTok.Type == JTokenType.Float);
+                    float p = hadPsychedelicField ? (float)pTok : 0f;
 
-                    if (eligible || !hadField)
+                    if (inFamily)
+                    {
+                        if (hadPsychedelicField && Math.Abs(p) > float.Epsilon && randomizePsychedelics)
+                        {
+                            var pmap = vanillaPsychedelicByFamily.TryGetValue(famId, out var pm)
+                                ? pm
+                                : (vanillaPsychedelicByFamily[famId] =
+                                    new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase));
+
+                            pmap[VariantKey(formKey, cookState)] = p;
+                            if (isBase) pmap["raw"] = p;
+                        }
+                    }
+
+                    if (hadPsychedelicField && randomizePsychedelics && Math.Abs(p) > float.Epsilon)
+                    {
+                        perLitre["psychedelic"] = 0f;
+                        psychedelicFound++;
+                    }
+                    bool hadNonZeroHealth = hadField && Math.Abs(h) > float.Epsilon;
+                    bool hadNonZeroPsychedelic = hadPsychedelicField && Math.Abs(p) > float.Epsilon;
+
+                    bool healthParticipates = eligible || !hadNonZeroHealth;
+                    bool psychedelicParticipates = randomizePsychedelics && (hadNonZeroPsychedelic || inFamily);
+
+                    if (healthParticipates || psychedelicParticipates)
                     {
                         var slot = new Slot
                         {
@@ -435,7 +493,8 @@ namespace ForagersGamble.Randomize
                             GroupKey = group,
                             TargetFoodProps = target,
                             LiquidPerLitreNode = perLitre,
-                            HadHealthField = hadField,
+                            HadHealthField = hadNonZeroHealth,
+                            HadPsychedelicField = hadNonZeroPsychedelic,
                             FamilyId = inFamily ? famId : null,
                             FormKey = inFamily ? formKey : null,
                             CookState = inFamily ? cookState : null,
@@ -453,7 +512,7 @@ namespace ForagersGamble.Randomize
             }
 
             int totalCandidates = candidatesByGroup.Values.Sum(l => l.Count);
-            if (totalCandidates == 0 || nonZeroFound == 0) return;
+            if (totalCandidates == 0 || (nonZeroFound == 0 && psychedelicFound == 0)) return;
 
             var rngA = new Random(seed32 ^ 0x5F3759DF);
 
@@ -476,7 +535,9 @@ namespace ForagersGamble.Randomize
             foreach (var (group, famListInGroup) in familiesByGroup)
             {
                 var donors = famListInGroup
-                    .Where(fid => vanillaByFamily.TryGetValue(fid, out var v) && v != null && v.Count > 0)
+                    .Where(fid =>
+                        (vanillaHealthByFamily .TryGetValue(fid, out var v) && v != null && v.Count > 0) ||
+                        (vanillaPsychedelicByFamily.TryGetValue(fid, out var p) && p != null && p.Count > 0))
                     .ToList();
                 if (donors.Count < 2) continue;
                 var candidates = famListInGroup
@@ -517,8 +578,14 @@ namespace ForagersGamble.Randomize
                         recSlots == null || recSlots.Count == 0)
                         continue;
 
-                    if (!vanillaByFamily.TryGetValue(donorFamId, out var donorMap) ||
-                        donorMap == null || donorMap.Count == 0)
+                    vanillaHealthByFamily .TryGetValue(donorFamId, out var donorMap);
+                    vanillaPsychedelicByFamily.TryGetValue(donorFamId, out var donorPsyMap);
+
+                    bool hasAnyDonorData =
+                        (donorMap != null && donorMap.Count > 0) ||
+                        (donorPsyMap != null && donorPsyMap.Count > 0);
+
+                    if (!hasAnyDonorData)
                         continue;
 
                     foreach (var slot in recSlots)
@@ -526,18 +593,40 @@ namespace ForagersGamble.Randomize
                         var vkey = VariantKey(slot.FormKey, slot.CookState);
                         if (string.IsNullOrEmpty(vkey)) continue;
 
-                        if (!donorMap.TryGetValue(vkey, out var donorVal))
-                            continue;
+                        float donorHealth = 0f;
+                        bool hasDonorHealth = donorMap != null && donorMap.TryGetValue(vkey, out donorHealth);
+
+                        float donorPsy = 0f;
+                        bool hasDonorPsy = donorPsyMap != null && donorPsyMap.TryGetValue(vkey, out donorPsy);
 
                         if (slot.TargetFoodProps != null)
                         {
-                            slot.TargetFoodProps.Health = donorVal;
+                            if (hasDonorHealth || slot.HadHealthField)
+                            {
+                                slot.TargetFoodProps.Health = donorHealth;
+                            }
+
+                            if (hasDonorPsy || slot.HadPsychedelicField)
+                            {
+                                slot.TargetFoodProps.Psychedelic = donorPsy;
+                            }
+
                             if (!ReferenceEquals(slot.Obj.NutritionProps, slot.TargetFoodProps))
                                 slot.Obj.NutritionProps = slot.TargetFoodProps;
                         }
 
                         if (slot.IsLiquid && slot.LiquidPerLitreNode != null)
-                            slot.LiquidPerLitreNode["health"] = donorVal;
+                        {
+                            if (hasDonorHealth || slot.HadHealthField)
+                            {
+                                slot.LiquidPerLitreNode["health"] = donorHealth;
+                            }
+
+                            if (hasDonorPsy || slot.HadPsychedelicField)
+                            {
+                                slot.LiquidPerLitreNode["psychedelic"] = donorPsy;
+                            }
+                        }
                     }
                 }
             }

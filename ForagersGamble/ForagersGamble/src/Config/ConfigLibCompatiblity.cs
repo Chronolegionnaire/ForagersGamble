@@ -40,7 +40,12 @@ namespace ForagersGamble.Config
 
         private const string settingShuffleDamagingItems = "foragersgamble:Config.Setting.ShuffleDamagingItems";
         private const string settingShuffleHealingItems = "foragersgamble:Config.Setting.ShuffleHealingItems";
+        private const string settingShufflePsychedelicItems = "foragersgamble:Config.Setting.ShufflePsychedelicItems";
 
+        private const string settingPsychedelicOnset = "foragersgamble:Config.Setting.PsychedelicOnset";
+        private const string settingPsychedelicOnsetMin = "foragersgamble:Config.Setting.PsychedelicOnsetMin";
+        private const string settingPsychedelicOnsetMax = "foragersgamble:Config.Setting.PsychedelicOnsetMax";
+        
         // Poison
         private const string settingDeadJimChance = "foragersgamble:Config.Setting.DeadJimChance";
         private const string headerOnsetScales = "foragersgamble:Config.Header.OnsetClassScales";
@@ -275,6 +280,22 @@ namespace ForagersGamble.Config
             bool shuffleHealing = main.ShuffleHealingItems;
             ImGui.Checkbox(Lang.Get(settingShuffleHealingItems) + $"##shuffleheal-{id}", ref shuffleHealing);
             main.ShuffleHealingItems = shuffleHealing;
+            
+            bool shufflePsychedelic = main.ShufflePsychedelicItems;
+            ImGui.Checkbox(Lang.Get(settingShufflePsychedelicItems) + $"##shufflepsy-{id}", ref shufflePsychedelic);
+            main.ShufflePsychedelicItems = shufflePsychedelic;
+            
+            bool psychedelicOnset = main.PsychedelicOnset;
+            ImGui.Checkbox(Lang.Get(settingPsychedelicOnset) + $"##psychedelic-onset-{id}", ref psychedelicOnset);
+            main.PsychedelicOnset = psychedelicOnset;
+
+            float psychedelicOnsetMin = main.PsychedelicOnsetMinHours;
+            float psychedelicOnsetMax = main.PsychedelicOnsetMaxHours;
+            DragFloatClamped(Lang.Get(settingPsychedelicOnsetMin) + $"##psychedelic-onset-min-{id}", ref psychedelicOnsetMin, 0.5f, 0f, 240f);
+            DragFloatClamped(Lang.Get(settingPsychedelicOnsetMax) + $"##psychedelic-onset-max-{id}", ref psychedelicOnsetMax, 0.5f, 0f, 240f);
+            if (psychedelicOnsetMax < psychedelicOnsetMin) psychedelicOnsetMax = psychedelicOnsetMin;
+            main.PsychedelicOnsetMinHours = psychedelicOnsetMin;
+            main.PsychedelicOnsetMaxHours = psychedelicOnsetMax;
 
             ImGui.Spacing();
 

@@ -108,6 +108,11 @@ namespace ForagersGamble.Config.SubConfigs
         [Category("Main")]
         [DefaultValue(false)]
         public bool ShuffleHealingItems { get; set; } = false;
+        
+        [Category("Main")]
+        [Display(Name = "Randomize Psychedelics")]
+        [DefaultValue(false)]
+        public bool ShufflePsychedelicItems { get; set; } = false;
 
         [Category("Knowledge")]
         [Display(Name = "Onset Multipliers by Class", Description = "Per-class scaling for onset. min/max are applied to the base onset range, then clamped to 0..240 hours.")]
@@ -139,5 +144,22 @@ namespace ForagersGamble.Config.SubConfigs
         [Display(Name = "Per-Item Poison Class", Description = "Optional explicit mapping from itemKey to poison class (e.g. game:unknown-mushroom -> strong).")]
         [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
         public Dictionary<string, string> PoisonClassByItemKey { get; set; } = new();
+        
+        [Category("Main")]
+        [Display(Name = "Delayed Psychedelic Onset")]
+        [DefaultValue(true)]
+        public bool PsychedelicOnset { get; set; } = true;
+
+        [Category("Main")]
+        [Display(Name = "Psychedelic Onset Min (hours, in-game)")]
+        [Range(0, 240)]
+        [DefaultValue(0.5f)]
+        public float PsychedelicOnsetMinHours { get; set; } = 0.5f;
+
+        [Category("Main")]
+        [Display(Name = "Psychedelic Onset Max (hours, in-game)")]
+        [Range(0, 240)]
+        [DefaultValue(2f)]
+        public float PsychedelicOnsetMaxHours { get; set; } = 2f;
     }
 }

@@ -1101,15 +1101,26 @@ namespace ForagersGamble
 
             if (path.StartsWith("vegetable-", StringComparison.OrdinalIgnoreCase))
             {
-                var veg = segs.Length > 1 ? segs[1] : null;
+                var veg = ExtractCanonicalProduceToken(path, "vegetable-");
                 foreach (var c in BuildVegFamily(veg, domain)) yield return c;
                 yield break;
             }
 
             if (path.StartsWith("fruit-", StringComparison.OrdinalIgnoreCase))
             {
-                var fru = segs.Length > 1 ? segs[1] : null;
+                var fru = ExtractCanonicalProduceToken(path, "fruit-");
                 foreach (var c in BuildFruitFamily(fru, domain)) yield return c;
+                yield break;
+            }
+
+            if (path.StartsWith("grain-", StringComparison.OrdinalIgnoreCase))
+            {
+                var grain = ExtractCanonicalProduceToken(path, "grain-");
+                if (!string.IsNullOrWhiteSpace(grain))
+                {
+                    yield return $"{domain}:grain-{grain}";
+                    yield return $"{domain}:seeds-{grain}";
+                }
                 yield break;
             }
 
@@ -1126,15 +1137,16 @@ namespace ForagersGamble
                 path.StartsWith("choppedveggie-", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("cookedchoppedveggie-", StringComparison.OrdinalIgnoreCase))
             {
-                var veg = segs.Length > 1 ? segs[1] : null;
+                var veg = segs.Length > 1 ? PlantKnowledgeUtil.NormalizeProduceToken(segs[1]) : null;
                 foreach (var c in BuildVegFamily(veg, domain)) yield return c;
                 yield break;
             }
 
             if (path.StartsWith("dryfruit-", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("candiedfruit-", StringComparison.OrdinalIgnoreCase))
+                path.StartsWith("candiedfruit-", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("dehydratedfruit-", StringComparison.OrdinalIgnoreCase))
             {
-                var fru = segs.Length > 1 ? segs[1] : null;
+                var fru = segs.Length > 1 ? PlantKnowledgeUtil.NormalizeProduceToken(segs[1]) : null;
                 foreach (var c in BuildFruitFamily(fru, domain)) yield return c;
                 yield break;
             }
@@ -1355,8 +1367,6 @@ namespace ForagersGamble
             if (unknownFruits && IsFruitBaseCode(fullCode)) return true;
             if (unknownVegetables && IsVegetableBaseCode(fullCode)) return true;
             if (unknownGrains && IsGrainBaseCode(fullCode)) return true;
-
-            // Keep UnknownPlants as the broad "plant object / misc plant food" switch.
             if (unknownPlants && (IsNutBaseCode(fullCode) || IsLegumeBaseCode(fullCode))) return true;
 
             return false;
@@ -1368,6 +1378,29 @@ namespace ForagersGamble
             int colon = fullCode.IndexOf(':');
             var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
             return path.StartsWith("mushroom-", StringComparison.OrdinalIgnoreCase);
+        }
+        private static string ExtractCanonicalProduceToken(string path, string familyPrefix)
+        {
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(familyPrefix))
+                return null;
+
+            if (!path.StartsWith(familyPrefix, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var rest = path.Substring(familyPrefix.Length).Trim('-', '_', '.');
+            if (string.IsNullOrWhiteSpace(rest))
+                return null;
+
+            var segs = rest.Split('-', StringSplitOptions.RemoveEmptyEntries);
+            if (segs.Length == 0)
+                return null;
+
+            int startIndex = 0;
+            if (segs.Length >= 2 && PlantKnowledgeUtil.ProduceVariantWords.Contains(segs[0]))
+                startIndex = 1;
+
+            var token = string.Join("-", segs.Skip(startIndex));
+            return PlantKnowledgeUtil.NormalizeProduceToken(token);
         }
     }
 }
