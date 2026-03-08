@@ -22,6 +22,9 @@ namespace ForagersGamble.Config
         private const string settingUnknownAll = "foragersgamble:Config.Setting.UnknownAll";
         private const string settingUnknownMushrooms = "foragersgamble:Config.Setting.UnknownMushrooms";
         private const string settingUnknownPlants = "foragersgamble:Config.Setting.UnknownPlants";
+        private const string settingUnknownFruits = "foragersgamble:Config.Setting.UnknownFruits";
+        private const string settingUnknownVegetables = "foragersgamble:Config.Setting.UnknownVegetables";
+        private const string settingUnknownGrains = "foragersgamble:Config.Setting.UnknownGrains";
         private const string settingForgetOnDeath = "foragersgamble:Config.Setting.ForgetOnDeath";
         private const string settingHideNutritionInfo = "foragersgamble:Config.Setting.HideNutritionInfo";
         private const string settingHideCraftingInfo = "foragersgamble:Config.Setting.HideCraftingInfo";
@@ -208,6 +211,18 @@ namespace ForagersGamble.Config
             bool unknownPlants = main.UnknownPlants;
             ImGui.Checkbox(Lang.Get(settingUnknownPlants) + $"##unknownPlants-{id}", ref unknownPlants);
             main.UnknownPlants = unknownPlants;
+            
+            bool unknownFruits = main.UnknownFruits;
+            ImGui.Checkbox(Lang.Get(settingUnknownFruits) + $"##unknownFruits-{id}", ref unknownFruits);
+            main.UnknownFruits = unknownFruits;
+            
+            bool unknownVegetables = main.UnknownVegetables;
+            ImGui.Checkbox(Lang.Get(settingUnknownVegetables) + $"##unknownVegetables-{id}", ref unknownVegetables);
+            main.UnknownVegetables = unknownVegetables;
+            
+            bool unknownGrains = main.UnknownGrains;
+            ImGui.Checkbox(Lang.Get(settingUnknownGrains) + $"##unknownGrains-{id}", ref unknownGrains);
+            main.UnknownGrains = unknownGrains;
 
             bool forgetOnDeath = main.ForgetOnDeath;
             ImGui.Checkbox(Lang.Get(settingForgetOnDeath) + $"##forgetOnDeath-{id}", ref forgetOnDeath);

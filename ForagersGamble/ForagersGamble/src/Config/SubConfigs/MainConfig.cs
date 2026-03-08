@@ -28,6 +28,9 @@ namespace ForagersGamble.Config.SubConfigs
 
         [Category("Main")] [DefaultValue(true)]  public bool UnknownMushrooms { get; set; } = true;
         [Category("Main")] [DefaultValue(true)]  public bool UnknownPlants   { get; set; } = true;
+        [Category("Main")] [DefaultValue(true)]  public bool UnknownFruits { get; set; } = true;
+        [Category("Main")] [DefaultValue(true)]  public bool UnknownVegetables { get; set; } = true;
+        [Category("Main")] [DefaultValue(true)]  public bool UnknownGrains { get; set; } = true;
         [Category("Main")] [DefaultValue(true)]  public bool ForgetOnDeath   { get; set; } = true;
         [Category("Main")] [DefaultValue(true)]  public bool HideNutritionInfo { get; set; } = true;
         [Category("Main")] [DefaultValue(true)]  public bool HideCraftingInfo  { get; set; } = true;

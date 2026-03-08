@@ -89,6 +89,9 @@ namespace ForagersGamble.Patches
                         cfg.UnknownAll == true,
                         cfg.UnknownPlants,
                         cfg.UnknownMushrooms,
+                        cfg.UnknownFruits,
+                        cfg.UnknownVegetables,
+                        cfg.UnknownGrains,
                         out var langKey))
                 {
                     nameToken = Lang.Get(langKey);

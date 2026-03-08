@@ -70,8 +70,10 @@ namespace ForagersGamble
             bool unknownAll = cfg.UnknownAll == true;
             bool unknownPlants = cfg.UnknownPlants == true;
             bool unknownMushrooms = cfg.UnknownMushrooms == true;
-
-            if (unknownAll || unknownPlants)
+            bool unknownFruits = cfg.UnknownFruits == true;
+            bool unknownVegetables = cfg.UnknownVegetables == true;
+            bool unknownGrains = cfg.UnknownGrains == true;
+            if (unknownAll || unknownPlants || unknownFruits || unknownVegetables || unknownGrains)
             {
                 var path = stack.Collectible.Code?.Path ?? "";
                 if (TryExtractSeedToken(path, out _))
@@ -79,11 +81,14 @@ namespace ForagersGamble
                     if (!TryResolveBaseProduceCodeCached(api, stack, out var parentCode))
                         return false;
 
-                    if (!IsKnown(agent, parentCode))
+                    if (!string.IsNullOrWhiteSpace(parentCode) &&
+                        ShouldMaskBaseCode(parentCode, unknownAll, unknownPlants, unknownMushrooms, unknownFruits, unknownVegetables, unknownGrains) &&
+                        !IsKnown(agent, parentCode))
                     {
                         langKey = "foragersgamble:unknown-seeds";
                         return true;
                     }
+
                     return false;
                 }
             }
@@ -99,6 +104,9 @@ namespace ForagersGamble
                         unknownAll,
                         unknownPlants,
                         unknownMushrooms,
+                        unknownFruits,
+                        unknownVegetables,
+                        unknownGrains,
                         out var liquidKey))
                 {
                     langKey = liquidKey;
@@ -116,7 +124,9 @@ namespace ForagersGamble
                     baseProduce?.Collectible?.Code != null)
                 {
                     var baseCode = baseProduce.Collectible.Code.ToString();
-                    if (!string.IsNullOrWhiteSpace(baseCode) && !IsKnown(agent, baseCode))
+                    if (!string.IsNullOrWhiteSpace(baseCode) &&
+                        ShouldMaskBaseCode(baseCode, unknownAll, unknownPlants, unknownMushrooms, unknownFruits, unknownVegetables, unknownGrains) &&
+                        !IsKnown(agent, baseCode))
                     {
                         if (TryResolveUnknownName(baseCode, out var baseKey))
                         {
@@ -223,8 +233,11 @@ namespace ForagersGamble
             }
 
             bool unknownAll = cfg?.UnknownAll == true;
-            bool unknownPlants = unknownAll || (cfg.UnknownPlants == true);
-            bool unknownMushrooms = unknownAll || (cfg.UnknownMushrooms == true);
+            bool unknownPlants = unknownAll || (cfg?.UnknownPlants == true);
+            bool unknownMushrooms = unknownAll || (cfg?.UnknownMushrooms == true);
+            bool unknownFruits = unknownAll || (cfg?.UnknownFruits == true);
+            bool unknownVegetables = unknownAll || (cfg?.UnknownVegetables == true);
+            bool unknownGrains = unknownAll || (cfg?.UnknownGrains == true);
 
             bool IsMushroomBaseCode(string fullCode)
             {
@@ -236,15 +249,55 @@ namespace ForagersGamble
                 return path.StartsWith("mushroom-", StringComparison.OrdinalIgnoreCase);
             }
 
-            bool IsPlantProduceCode(string fullCode)
+            bool IsFruitProduceCode(string fullCode)
             {
                 if (string.IsNullOrWhiteSpace(fullCode)) return false;
                 int colon = fullCode.IndexOf(':');
                 var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
-                return path.StartsWith("fruit-", StringComparison.OrdinalIgnoreCase)
-                       || path.StartsWith("vegetable-", StringComparison.OrdinalIgnoreCase)
-                       || path.StartsWith("grain-", StringComparison.OrdinalIgnoreCase)
-                       || path.StartsWith("nut-", StringComparison.OrdinalIgnoreCase);
+                return path.StartsWith("fruit-", StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool IsVegetableProduceCode(string fullCode)
+            {
+                if (string.IsNullOrWhiteSpace(fullCode)) return false;
+                int colon = fullCode.IndexOf(':');
+                var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+                return path.StartsWith("vegetable-", StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool IsGrainProduceCode(string fullCode)
+            {
+                if (string.IsNullOrWhiteSpace(fullCode)) return false;
+                int colon = fullCode.IndexOf(':');
+                var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+                return path.StartsWith("grain-", StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool IsNutProduceCode(string fullCode)
+            {
+                if (string.IsNullOrWhiteSpace(fullCode)) return false;
+                int colon = fullCode.IndexOf(':');
+                var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+                return path.StartsWith("nut-", StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool IsLegumeProduceCode(string fullCode)
+            {
+                if (string.IsNullOrWhiteSpace(fullCode)) return false;
+                int colon = fullCode.IndexOf(':');
+                var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+                return path.StartsWith("legume-", StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool IsEnabledPlantProduceCode(string fullCode)
+            {
+                if (string.IsNullOrWhiteSpace(fullCode)) return false;
+                if (unknownFruits && IsFruitProduceCode(fullCode)) return true;
+                if (unknownVegetables && IsVegetableProduceCode(fullCode)) return true;
+                if (unknownGrains && IsGrainProduceCode(fullCode)) return true;
+                if (unknownPlants && (IsNutProduceCode(fullCode) || IsLegumeProduceCode(fullCode))) return true;
+
+                return false;
             }
 
             bool IsEdibleCollectible(CollectibleObject coll, ItemStack st)
@@ -397,7 +450,7 @@ namespace ForagersGamble
                     {
                         if (!string.IsNullOrEmpty(baseCode))
                         {
-                            if (unknownPlants && IsPlantProduceCode(baseCode)) include = true;
+                            if (IsEnabledPlantProduceCode(baseCode)) include = true;
                             else if (unknownMushrooms && IsMushroomBaseCode(baseCode)) include = true;
                         }
                     }
@@ -423,21 +476,14 @@ namespace ForagersGamble
                 }
             }
 
-            if (unknownPlants)
+            if (unknownPlants || unknownFruits || unknownVegetables || unknownGrains)
             {
                 foreach (var coll in api.World.Collectibles)
                 {
                     if (coll?.Code == null) continue;
 
-                    var path = coll.Code.Path ?? "";
-
-                    bool isPlantProduce =
-                        path.StartsWith("fruit-", StringComparison.OrdinalIgnoreCase) ||
-                        path.StartsWith("vegetable-", StringComparison.OrdinalIgnoreCase) ||
-                        path.StartsWith("grain-", StringComparison.OrdinalIgnoreCase) ||
-                        path.StartsWith("nut-", StringComparison.OrdinalIgnoreCase);
-
-                    if (!isPlantProduce) continue;
+                    var fullCode = coll.Code.ToString();
+                    if (!IsEnabledPlantProduceCode(fullCode)) continue;
 
                     ItemStack stack;
                     try
@@ -499,7 +545,7 @@ namespace ForagersGamble
                         var baseCode = baseProduce?.Collectible?.Code?.ToString();
                         if (string.IsNullOrEmpty(baseCode)) continue;
 
-                        if (!unknownAll && !IsPlantProduceCode(baseCode))
+                        if (!unknownAll && !IsEnabledPlantProduceCode(baseCode))
                             continue;
 
                         var selfCode = coll.Code.ToString();
@@ -1150,6 +1196,9 @@ namespace ForagersGamble
             bool unknownAll,
             bool unknownPlants,
             bool unknownMushrooms,
+            bool unknownFruits,
+            bool unknownVegetables,
+            bool unknownGrains,
             out string langKey)
         {
             langKey = null;
@@ -1210,8 +1259,13 @@ namespace ForagersGamble
 
                 if (unknownAll) return GetProgress(agent, pcode) < 1f;
 
-                if (unknownPlants && IsPlantBase(pcode)) return GetProgress(agent, pcode) < 1f;
                 if (unknownMushrooms && IsMushroomBase(pcode)) return GetProgress(agent, pcode) < 1f;
+                if (unknownFruits && IsFruitBaseCode(pcode)) return GetProgress(agent, pcode) < 1f;
+                if (unknownVegetables && IsVegetableBaseCode(pcode)) return GetProgress(agent, pcode) < 1f;
+                if (unknownGrains && IsGrainBaseCode(pcode)) return GetProgress(agent, pcode) < 1f;
+
+                if (unknownPlants && (IsNutBaseCode(pcode) || IsLegumeBaseCode(pcode)))
+                    return GetProgress(agent, pcode) < 1f;
 
                 return false;
             }
@@ -1236,6 +1290,84 @@ namespace ForagersGamble
             }
 
             return false;
+        }
+        private static bool IsFruitBaseCode(string fullCode)
+        {
+            if (string.IsNullOrWhiteSpace(fullCode)) return false;
+            int colon = fullCode.IndexOf(':');
+            var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+            return path.StartsWith("fruit-", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsVegetableBaseCode(string fullCode)
+        {
+            if (string.IsNullOrWhiteSpace(fullCode)) return false;
+            int colon = fullCode.IndexOf(':');
+            var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+            return path.StartsWith("vegetable-", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsGrainBaseCode(string fullCode)
+        {
+            if (string.IsNullOrWhiteSpace(fullCode)) return false;
+            int colon = fullCode.IndexOf(':');
+            var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+            return path.StartsWith("grain-", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPlantProduceCode(string fullCode)
+        {
+            return IsFruitBaseCode(fullCode)
+                   || IsVegetableBaseCode(fullCode)
+                   || IsGrainBaseCode(fullCode)
+                   || IsNutBaseCode(fullCode)
+                   || IsLegumeBaseCode(fullCode);
+        }
+
+        private static bool IsNutBaseCode(string fullCode)
+        {
+            if (string.IsNullOrWhiteSpace(fullCode)) return false;
+            int colon = fullCode.IndexOf(':');
+            var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+            return path.StartsWith("nut-", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsLegumeBaseCode(string fullCode)
+        {
+            if (string.IsNullOrWhiteSpace(fullCode)) return false;
+            int colon = fullCode.IndexOf(':');
+            var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+            return path.StartsWith("legume-", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool ShouldMaskBaseCode(
+            string fullCode,
+            bool unknownAll,
+            bool unknownPlants,
+            bool unknownMushrooms,
+            bool unknownFruits,
+            bool unknownVegetables,
+            bool unknownGrains)
+        {
+            if (string.IsNullOrWhiteSpace(fullCode)) return false;
+            if (unknownAll) return true;
+            if (unknownMushrooms && IsMushroomBaseCodeStatic(fullCode)) return true;
+            if (unknownFruits && IsFruitBaseCode(fullCode)) return true;
+            if (unknownVegetables && IsVegetableBaseCode(fullCode)) return true;
+            if (unknownGrains && IsGrainBaseCode(fullCode)) return true;
+
+            // Keep UnknownPlants as the broad "plant object / misc plant food" switch.
+            if (unknownPlants && (IsNutBaseCode(fullCode) || IsLegumeBaseCode(fullCode))) return true;
+
+            return false;
+        }
+
+        private static bool IsMushroomBaseCodeStatic(string fullCode)
+        {
+            if (string.IsNullOrWhiteSpace(fullCode)) return false;
+            int colon = fullCode.IndexOf(':');
+            var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
+            return path.StartsWith("mushroom-", StringComparison.OrdinalIgnoreCase);
         }
     }
 }
