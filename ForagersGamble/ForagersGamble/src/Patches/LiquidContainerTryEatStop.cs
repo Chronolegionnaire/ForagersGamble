@@ -252,18 +252,6 @@ namespace ForagersGamble.Patches
                 {
                     Knowledge.MarkKnown(byEntity, key);
                 }
-
-                if (wasNibble && slot?.Itemstack != null)
-                {
-                    float factor = ModConfig.Instance.Main.EnableNibbling
-                        ? ModConfig.Instance.Main.NibbleFactor
-                        : 1f;
-                    float deltaMul = factor - 1f;
-                    if (Math.Abs(deltaMul) > 0f)
-                    {
-                        HodCompat.TryApplyHydration(byEntity, slot.Itemstack, deltaMul);
-                    }
-                }
             }
             catch
             {
@@ -289,6 +277,148 @@ namespace ForagersGamble.Patches
                 catch
                 {
                 }
+            }
+        }
+    }
+    internal static class NibblePortionUtil
+    {
+        public static float GetLiquidPortionLitres(
+            BlockLiquidContainerBase block,
+            ItemStack containerStack,
+            ItemStack contentStack)
+        {
+            if (block == null || containerStack == null || contentStack == null)
+                return 0f;
+            try
+            {
+                var props = BlockLiquidContainerBase.GetContainableProps(contentStack);
+                float itemsPerLitre = props?.ItemsPerLitre ?? 1f;
+
+                if (!float.IsFinite(itemsPerLitre) || itemsPerLitre <= 0f)
+                    itemsPerLitre = 1f;
+                float requestedLitres = Math.Max(
+                    1f / itemsPerLitre,
+                    block.DrinkPortionSize
+                );
+                int requestedItems = Math.Max(
+                    1,
+                    (int)(requestedLitres * itemsPerLitre)
+                );
+
+                int actualItems = Math.Min(
+                    contentStack.StackSize,
+                    requestedItems
+                );
+
+                if (actualItems <= 0)
+                    return 0f;
+
+                return actualItems / itemsPerLitre;
+            }
+            catch
+            {
+                return 0f;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(BlockLiquidContainerBase), "tryEatStop",
+        new Type[] { typeof(float), typeof(ItemSlot), typeof(EntityAgent) })]
+    public static class Patch_LiquidContainer_TryEatStop_HydrationPortion
+    {
+        private sealed class PatchState
+        {
+            public ItemStack ContentStack;
+            public float LitresConsumed;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPriority(Priority.First)]
+        static void Prefix(
+            float secondsUsed,
+            ItemSlot slot,
+            EntityAgent byEntity,
+            BlockLiquidContainerBase __instance,
+            out PatchState __state)
+        {
+            __state = null;
+
+            try
+            {
+                if (byEntity?.World is not IServerWorldAccessor)
+                    return;
+
+                if (secondsUsed < 0.95f)
+                    return;
+
+                if (slot?.Itemstack == null || __instance == null)
+                    return;
+
+                var cfg = ModConfig.Instance?.Main;
+                if (cfg?.EnableNibbling != true)
+                    return;
+
+                if (byEntity.Controls?.Sneak != true)
+                    return;
+
+                ItemStack content = __instance.GetContent(slot.Itemstack);
+                if (content == null)
+                    return;
+                if (Knowledge.IsKnown(byEntity, content))
+                    return;
+
+                float litres = NibblePortionUtil.GetLiquidPortionLitres(
+                    __instance,
+                    slot.Itemstack,
+                    content
+                );
+
+                if (litres <= 0f)
+                    return;
+
+                __state = new PatchState
+                {
+                    ContentStack = content.Clone(),
+                    LitresConsumed = litres
+                };
+            }
+            catch
+            {
+                __state = null;
+            }
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPriority(Priority.Last)]
+        static void Postfix(
+            EntityAgent byEntity,
+            PatchState __state)
+        {
+            try
+            {
+                if (__state?.ContentStack == null)
+                    return;
+
+                var cfg = ModConfig.Instance?.Main;
+                if (cfg?.EnableNibbling != true)
+                    return;
+
+                float factor = cfg.NibbleFactor;
+                float deltaMul = factor - 1f;
+
+                if (Math.Abs(deltaMul) <= 0f)
+                    return;
+                float hydrationCorrectionMul =
+                    deltaMul * __state.LitresConsumed;
+
+                HodCompat.TryApplyHydration(
+                    byEntity,
+                    __state.ContentStack,
+                    hydrationCorrectionMul
+                );
+            }
+            catch
+            {
             }
         }
     }

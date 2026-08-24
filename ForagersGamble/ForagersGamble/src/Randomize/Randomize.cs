@@ -182,6 +182,7 @@ namespace ForagersGamble.Randomize
             if (path.StartsWith("dryfruit-", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("candiedfruit-", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("dehydratedfruit-", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("gelatin-", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("pressedmash-", StringComparison.OrdinalIgnoreCase))
             {
                 var segs = path.Split('-');

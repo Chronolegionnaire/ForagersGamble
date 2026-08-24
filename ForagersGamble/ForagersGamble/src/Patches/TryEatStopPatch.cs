@@ -221,18 +221,6 @@ namespace ForagersGamble.Patches
                             }
                         }
                     }
-
-                    if (wasNibble && slot?.Itemstack != null)
-                    {
-                        float factor = ModConfig.Instance.Main.EnableNibbling
-                            ? ModConfig.Instance.Main.NibbleFactor
-                            : 1f;
-                        float deltaMul = factor - 1f;
-                        if (Math.Abs(deltaMul) > 0f)
-                        {
-                            HodCompat.TryApplyHydration(byEntity, slot.Itemstack, deltaMul);
-                        }
-                    }
                 }
             }
             catch
@@ -259,6 +247,89 @@ namespace ForagersGamble.Patches
                 catch
                 {
                 }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(CollectibleObject), "tryEatStop",
+        new Type[] { typeof(float), typeof(ItemSlot), typeof(EntityAgent) })]
+    public static class Patch_CollectibleObject_TryEatStop_HydrationPortion
+    {
+        private sealed class PatchState
+        {
+            public ItemStack EatenStack;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPriority(Priority.First)]
+        static void Prefix(
+            float secondsUsed,
+            ItemSlot slot,
+            EntityAgent byEntity,
+            out PatchState __state)
+        {
+            __state = null;
+
+            try
+            {
+                if (byEntity?.World is not IServerWorldAccessor)
+                    return;
+
+                if (secondsUsed < 0.95f)
+                    return;
+
+                if (slot?.Itemstack == null)
+                    return;
+
+                var cfg = ModConfig.Instance?.Main;
+                if (cfg?.EnableNibbling != true)
+                    return;
+
+                if (byEntity.Controls?.Sneak != true)
+                    return;
+
+                if (Knowledge.IsKnown(byEntity, slot.Itemstack))
+                    return;
+
+                __state = new PatchState
+                {
+                    EatenStack = slot.Itemstack.Clone()
+                };
+            }
+            catch
+            {
+                __state = null;
+            }
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPriority(Priority.Last)]
+        static void Postfix(
+            EntityAgent byEntity,
+            PatchState __state)
+        {
+            try
+            {
+                if (__state?.EatenStack == null)
+                    return;
+
+                var cfg = ModConfig.Instance?.Main;
+                if (cfg?.EnableNibbling != true)
+                    return;
+
+                float deltaMul = cfg.NibbleFactor - 1f;
+
+                if (Math.Abs(deltaMul) <= 0f)
+                    return;
+                
+                HodCompat.TryApplyHydration(
+                    byEntity,
+                    __state.EatenStack,
+                    deltaMul
+                );
+            }
+            catch
+            {
             }
         }
     }

@@ -18,7 +18,7 @@ namespace ForagersGamble
         private static readonly string[] CookStates = { "partbaked", "perfect", "charred" };
         private static Dictionary<string, string> s_derivativeToBase;
         private static Dictionary<string, HashSet<string>> s_baseToDerivatives;
-
+        private const string RevisionKey = "knowledgeRevision";
         public enum UnknownNameCategory
         {
             None = 0,
@@ -49,6 +49,31 @@ namespace ForagersGamble
             lock (s_cacheLock)
             {
                 s_baseProduceCodeCache.Clear();
+            }
+        }
+        
+        public static int GetRevision(EntityAgent entity)
+        {
+            var player = (entity as EntityPlayer)?.Player;
+            if (player == null)
+                return 0;
+
+            var root = player.Entity.WatchedAttributes
+                .GetTreeAttribute(AttrRoot);
+
+            return root?.GetInt(RevisionKey, 0) ?? 0;
+        }
+
+        private static void BumpRevision(ITreeAttribute root)
+        {
+            if (root == null)
+                return;
+
+            int current = root.GetInt(RevisionKey, 0);
+
+            unchecked
+            {
+                root.SetInt(RevisionKey, current + 1);
             }
         }
 
@@ -92,8 +117,81 @@ namespace ForagersGamble
                     return false;
                 }
             }
-            if (!IsInUnknownUniverse(code)) return false;
-            if (IsKnown(agent, code)) return false;
+            var foodIdx = FoodKnowledgeIndex.Get(api);
+
+            if (foodIdx != null &&
+                foodIdx.TryGet(stack, out var foodMeta) &&
+                ShouldMaskIndexedFood(
+                    foodMeta,
+                    unknownAll,
+                    unknownPlants,
+                    unknownMushrooms,
+                    unknownFruits,
+                    unknownVegetables,
+                    unknownGrains))
+            {
+                string knowledgeCode = code;
+
+                bool hasRealParent =
+                    !string.IsNullOrWhiteSpace(foodMeta.ParentCode) &&
+                    !foodMeta.ParentCode.Equals(
+                        code,
+                        StringComparison.OrdinalIgnoreCase);
+
+                if (hasRealParent)
+                {
+                    knowledgeCode = foodMeta.ParentCode;
+                }
+                bool known =
+                    GetProgress(agent, knowledgeCode) >= 1f;
+
+                if (!known)
+                {
+                    if (hasRealParent &&
+                        TryResolveUnknownName(
+                            knowledgeCode,
+                            out var parentKey))
+                    {
+                        langKey = parentKey;
+                        return true;
+                    }
+                    langKey = foodMeta.Category switch
+                    {
+                        UnknownNameCategory.Fruit =>
+                            "foragersgamble:unknown-fruit",
+
+                        UnknownNameCategory.Vegetable =>
+                            "foragersgamble:unknown-vegetable",
+
+                        UnknownNameCategory.Grain =>
+                            "foragersgamble:unknown-grain",
+
+                        UnknownNameCategory.Mushroom =>
+                            "foragersgamble:unknown-mushroom",
+
+                        UnknownNameCategory.Protein =>
+                            "foragersgamble:unknown-protein",
+
+                        UnknownNameCategory.Dairy =>
+                            "foragersgamble:unknown-dairy",
+
+                        UnknownNameCategory.PressedMash =>
+                            "foragersgamble:unknown-mash",
+
+                        _ =>
+                            "foragersgamble:unknown-food"
+                    };
+
+                    return true;
+                }
+            }
+
+            if (!IsInUnknownUniverse(code))
+                return false;
+
+            if (IsKnown(agent, code))
+                return false;
+
             if (IsLiquidContainer(code))
             {
                 if (TryResolveUnknownLiquidName(
@@ -113,31 +211,13 @@ namespace ForagersGamble
                     return true;
                 }
             }
-            if (TryResolveUnknownName(code, out var generalKey))
+
+            if (TryResolveUnknownName(
+                    code,
+                    out var generalKey))
             {
                 langKey = generalKey;
                 return true;
-            }
-            try
-            {
-                if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var baseProduce) &&
-                    baseProduce?.Collectible?.Code != null)
-                {
-                    var baseCode = baseProduce.Collectible.Code.ToString();
-                    if (!string.IsNullOrWhiteSpace(baseCode) &&
-                        ShouldMaskBaseCode(baseCode, unknownAll, unknownPlants, unknownMushrooms, unknownFruits, unknownVegetables, unknownGrains) &&
-                        !IsKnown(agent, baseCode))
-                    {
-                        if (TryResolveUnknownName(baseCode, out var baseKey))
-                        {
-                            langKey = baseKey;
-                            return true;
-                        }
-                    }
-                }
-            }
-            catch
-            {
             }
 
             return false;
@@ -170,17 +250,34 @@ namespace ForagersGamble
             return !string.IsNullOrWhiteSpace(token);
         }
 
-        public static bool TryResolveBaseProduceCodeCached(ICoreAPI api, ItemStack stack, out string baseCode)
+        public static bool TryResolveBaseProduceCodeCached(
+            ICoreAPI api,
+            ItemStack stack,
+            out string baseCode)
         {
             baseCode = null;
-            if (api?.World == null || stack?.Collectible?.Code == null) return false;
 
+            if (api?.World == null ||
+                stack?.Collectible?.Code == null)
+            {
+                return false;
+            }
+            var foodIdx = FoodKnowledgeIndex.Get(api);
+
+            if (foodIdx != null &&
+                foodIdx.TryGet(stack, out var meta) &&
+                !string.IsNullOrWhiteSpace(meta.ParentCode))
+            {
+                baseCode = meta.ParentCode;
+                return true;
+            }
             var selfCode = stack.Collectible.Code.ToString();
-            if (string.IsNullOrEmpty(selfCode)) return false;
 
             lock (s_cacheLock)
             {
-                if (s_baseProduceCodeCache.TryGetValue(selfCode, out var cached))
+                if (s_baseProduceCodeCache.TryGetValue(
+                        selfCode,
+                        out var cached))
                 {
                     baseCode = cached;
                     return !string.IsNullOrEmpty(baseCode);
@@ -188,9 +285,13 @@ namespace ForagersGamble
             }
 
             string resolved = "";
+
             try
             {
-                if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var bp) &&
+                if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(
+                        api,
+                        stack,
+                        out var bp) &&
                     bp?.Collectible?.Code != null)
                 {
                     resolved = bp.Collectible.Code.ToString();
@@ -207,6 +308,7 @@ namespace ForagersGamble
             }
 
             baseCode = resolved;
+
             return !string.IsNullOrEmpty(baseCode);
         }
 
@@ -653,7 +755,56 @@ namespace ForagersGamble
                     }
                 }
             }
+            var foodIndex = FoodKnowledgeIndex.Get(api);
 
+            if (foodIndex != null)
+            {
+                foreach (var coll in api.World.Collectibles)
+                {
+                    if (coll?.Code == null)
+                        continue;
+
+                    if (!foodIndex.TryGet(coll, out var meta))
+                        continue;
+
+                    if (!meta.IsEdible)
+                        continue;
+
+                    if (!ShouldMaskIndexedFood(
+                            meta,
+                            unknownAll,
+                            unknownPlants,
+                            unknownMushrooms,
+                            unknownFruits,
+                            unknownVegetables,
+                            unknownGrains))
+                    {
+                        continue;
+                    }
+
+                    var selfCode = coll.Code.ToString();
+                    var selfNorm = Norm(selfCode);
+
+                    set.Add(selfCode);
+                    set.Add(selfNorm);
+                    if (!string.IsNullOrWhiteSpace(meta.ParentCode) &&
+                        !meta.ParentCode.Equals(
+                            selfCode,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        var parentCode = meta.ParentCode;
+                        var parentNorm = Norm(parentCode);
+
+                        set.Add(parentCode);
+                        set.Add(parentNorm);
+
+                        AddDerivEdge(selfCode, parentCode);
+                        AddDerivEdge(selfNorm, parentNorm);
+                        AddDerivEdge(selfCode, parentNorm);
+                        AddDerivEdge(selfNorm, parentCode);
+                    }
+                }
+            }
             var nameMap = new Dictionary<string, UnknownNameCategory>(StringComparer.OrdinalIgnoreCase);
             var liquidSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -845,23 +996,58 @@ namespace ForagersGamble
             return next >= 1f;
         }
 
-        public static void MarkDiscovered(EntityAgent entity, string code)
+        public static void MarkDiscovered(
+            EntityAgent entity,
+            string code)
         {
-            if (string.IsNullOrEmpty(code) || entity == null) return;
+            if (string.IsNullOrEmpty(code) || entity == null)
+                return;
+
             var player = (entity as EntityPlayer)?.Player;
-            if (player == null) return;
+            if (player == null)
+                return;
 
             var wat = player.Entity.WatchedAttributes;
             var root = wat.GetTreeAttribute(AttrRoot) ?? new TreeAttribute();
             var prog = root.GetTreeAttribute(ProgressTree) ?? new TreeAttribute();
 
+            bool changed = prog.GetFloat(code, 0f) < 1f;
+
             prog.SetFloat(code, 1f);
             root[ProgressTree] = prog;
+
             var list = new List<string>();
+
             var cur = root[KnownSet] as StringArrayAttribute;
-            if (cur?.value != null) list.AddRange(cur.value);
-            if (!list.Contains(code)) list.Add(code);
-            root[KnownSet] = new StringArrayAttribute(list.ToArray());
+
+            if (cur?.value != null)
+                list.AddRange(cur.value);
+
+            bool alreadyListed = false;
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (string.Equals(
+                        list[i],
+                        code,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    alreadyListed = true;
+                    break;
+                }
+            }
+
+            if (!alreadyListed)
+            {
+                list.Add(code);
+                changed = true;
+            }
+
+            root[KnownSet] =
+                new StringArrayAttribute(list.ToArray());
+
+            if (changed)
+                BumpRevision(root);
 
             wat.SetAttribute(AttrRoot, root);
             player.Entity.Attributes.MarkPathDirty(AttrRoot);
@@ -1009,14 +1195,23 @@ namespace ForagersGamble
 
         public static void ForgetAll(IPlayer player)
         {
-            if (player?.Entity == null) return;
+            if (player?.Entity == null)
+                return;
 
             var wat = player.Entity.WatchedAttributes;
             var root = wat.GetTreeAttribute(AttrRoot) ?? new TreeAttribute();
 
-            root[KnownSet] = new StringArrayAttribute(Array.Empty<string>());
-            root[KnownHealthSet] = new StringArrayAttribute(Array.Empty<string>());
-            root[ProgressTree] = new TreeAttribute();
+            root[KnownSet] =
+                new StringArrayAttribute(Array.Empty<string>());
+
+            root[KnownHealthSet] =
+                new StringArrayAttribute(Array.Empty<string>());
+
+            root[ProgressTree] =
+                new TreeAttribute();
+
+            BumpRevision(root);
+
             wat.SetAttribute(AttrRoot, root);
             player.Entity.Attributes.MarkPathDirty(AttrRoot);
         }
@@ -1144,10 +1339,33 @@ namespace ForagersGamble
 
             if (path.StartsWith("dryfruit-", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("candiedfruit-", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("dehydratedfruit-", StringComparison.OrdinalIgnoreCase))
+                path.StartsWith("dehydratedfruit-", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("gelatin-", StringComparison.OrdinalIgnoreCase))
             {
-                var fru = segs.Length > 1 ? PlantKnowledgeUtil.NormalizeProduceToken(segs[1]) : null;
-                foreach (var c in BuildFruitFamily(fru, domain)) yield return c;
+                string prefix;
+
+                if (path.StartsWith("dryfruit-", StringComparison.OrdinalIgnoreCase))
+                    prefix = "dryfruit-";
+                else if (path.StartsWith("candiedfruit-", StringComparison.OrdinalIgnoreCase))
+                    prefix = "candiedfruit-";
+                else if (path.StartsWith("dehydratedfruit-", StringComparison.OrdinalIgnoreCase))
+                    prefix = "dehydratedfruit-";
+                else
+                    prefix = "gelatin-";
+
+                var fru = path
+                    .Substring(prefix.Length)
+                    .Trim('-', '_', '.');
+
+                fru = PlantKnowledgeUtil.NormalizeProduceToken(fru);
+
+                if (!string.IsNullOrWhiteSpace(fru))
+                {
+                    foreach (var c in BuildFruitFamily(fru, domain))
+                        yield return c;
+                    yield return $"game:fruit-{fru}";
+                }
+
                 yield break;
             }
 
@@ -1214,77 +1432,73 @@ namespace ForagersGamble
             out string langKey)
         {
             langKey = null;
-            if (agent == null || api?.World == null || coll == null || stack == null)
-                return false;
 
-            if (!(unknownAll || unknownPlants || unknownMushrooms))
-                return false;
-
-            var idx = PlantKnowledgeIndex.Get(api);
-
-            ItemStack baseProduce = null;
-            try
+            if (agent == null ||
+                api?.World == null ||
+                coll == null ||
+                stack == null)
             {
-                PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out baseProduce);
-            }
-            catch
-            {
-            }
-
-            ItemStack edibleCounterpart = null;
-            try
-            {
-                edibleCounterpart = PlantKnowledgeUtil.TryResolveEdibleCounterpart(api, idx, coll, stack, agent);
-            }
-            catch
-            {
-            }
-
-            ItemStack parent = baseProduce ?? edibleCounterpart;
-            string parentCode = parent?.Collectible?.Code?.ToString();
-
-            bool IsPlantBase(string fullCode)
-            {
-                if (string.IsNullOrWhiteSpace(fullCode)) return false;
-                int colon = fullCode.IndexOf(':');
-                var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
-                return path.StartsWith("fruit-", StringComparison.OrdinalIgnoreCase)
-                       || path.StartsWith("vegetable-", StringComparison.OrdinalIgnoreCase)
-                       || path.StartsWith("grain-", StringComparison.OrdinalIgnoreCase)
-                       || path.StartsWith("nut-", StringComparison.OrdinalIgnoreCase)
-                       || path.StartsWith("legume-", StringComparison.OrdinalIgnoreCase);
-            }
-
-            bool IsMushroomBase(string fullCode)
-            {
-                if (string.IsNullOrWhiteSpace(fullCode)) return false;
-                if (idx != null && idx.IsMushroom(fullCode)) return true;
-                int colon = fullCode.IndexOf(':');
-                var path = colon >= 0 ? fullCode.Substring(colon + 1) : fullCode;
-                return path.StartsWith("mushroom-", StringComparison.OrdinalIgnoreCase);
-            }
-
-            bool ShouldMaskParent(string pcode)
-            {
-                if (string.IsNullOrWhiteSpace(pcode)) return false;
-                if (!IsInUnknownUniverse(pcode)) return false;
-
-                if (unknownAll) return GetProgress(agent, pcode) < 1f;
-
-                if (unknownMushrooms && IsMushroomBase(pcode)) return GetProgress(agent, pcode) < 1f;
-                if (unknownFruits && IsFruitBaseCode(pcode)) return GetProgress(agent, pcode) < 1f;
-                if (unknownVegetables && IsVegetableBaseCode(pcode)) return GetProgress(agent, pcode) < 1f;
-                if (unknownGrains && IsGrainBaseCode(pcode)) return GetProgress(agent, pcode) < 1f;
-
-                if (unknownPlants && (IsNutBaseCode(pcode) || IsLegumeBaseCode(pcode)))
-                    return GetProgress(agent, pcode) < 1f;
-
                 return false;
             }
 
-            if (parent != null)
+            if (!(unknownAll ||
+                  unknownPlants ||
+                  unknownMushrooms ||
+                  unknownFruits ||
+                  unknownVegetables ||
+                  unknownGrains))
             {
-                if (ShouldMaskParent(parentCode))
+                return false;
+            }
+
+            bool ShouldMaskParent(string parentCode)
+            {
+                if (string.IsNullOrWhiteSpace(parentCode))
+                    return false;
+
+                if (unknownAll)
+                    return !IsKnown(agent, parentCode);
+
+                if (unknownMushrooms &&
+                    IsMushroomBaseCodeStatic(parentCode))
+                {
+                    return !IsKnown(agent, parentCode);
+                }
+
+                if ((unknownFruits || unknownPlants) &&
+                    IsFruitBaseCode(parentCode))
+                {
+                    return !IsKnown(agent, parentCode);
+                }
+
+                if ((unknownVegetables || unknownPlants) &&
+                    IsVegetableBaseCode(parentCode))
+                {
+                    return !IsKnown(agent, parentCode);
+                }
+
+                if ((unknownGrains || unknownPlants) &&
+                    IsGrainBaseCode(parentCode))
+                {
+                    return !IsKnown(agent, parentCode);
+                }
+
+                if (unknownPlants &&
+                    (IsNutBaseCode(parentCode) ||
+                     IsLegumeBaseCode(parentCode)))
+                {
+                    return !IsKnown(agent, parentCode);
+                }
+
+                return false;
+            }
+            var foodIdx = FoodKnowledgeIndex.Get(api);
+
+            if (foodIdx != null &&
+                foodIdx.TryGet(stack, out var meta) &&
+                !string.IsNullOrWhiteSpace(meta.ParentCode))
+            {
+                if (ShouldMaskParent(meta.ParentCode))
                 {
                     langKey = "foragersgamble:unknown-liquid";
                     return true;
@@ -1292,10 +1506,68 @@ namespace ForagersGamble
 
                 return false;
             }
+            string baseCode = null;
 
+            try
+            {
+                if (TryResolveBaseProduceCodeCached(
+                        api,
+                        stack,
+                        out var resolvedBase) &&
+                    !string.IsNullOrWhiteSpace(resolvedBase))
+                {
+                    baseCode = resolvedBase;
+                }
+            }
+            catch
+            {
+            }
+
+            if (!string.IsNullOrWhiteSpace(baseCode))
+            {
+                if (ShouldMaskParent(baseCode))
+                {
+                    langKey = "foragersgamble:unknown-liquid";
+                    return true;
+                }
+
+                return false;
+            }
+            try
+            {
+                var plantIdx = PlantKnowledgeIndex.Get(api);
+
+                var counterpart = PlantKnowledgeUtil.TryResolveEdibleCounterpart(
+                    api,
+                    plantIdx,
+                    coll,
+                    stack,
+                    agent
+                );
+
+                var counterpartCode =
+                    counterpart?.Collectible?.Code?.ToString();
+
+                if (!string.IsNullOrWhiteSpace(counterpartCode))
+                {
+                    if (ShouldMaskParent(counterpartCode))
+                    {
+                        langKey = "foragersgamble:unknown-liquid";
+                        return true;
+                    }
+
+                    return false;
+                }
+            }
+            catch
+            {
+            }
             var selfCode = ItemKey(stack);
-            if (unknownAll && !string.IsNullOrWhiteSpace(selfCode) && IsInUnknownUniverse(selfCode) &&
-                GetProgress(agent, selfCode) < 1f)
+
+            if (unknownAll &&
+                !string.IsNullOrWhiteSpace(selfCode) &&
+                IsInUnknownUniverse(selfCode) &&
+                !IsKnown(agent, selfCode))
             {
                 langKey = "foragersgamble:unknown-liquid";
                 return true;
@@ -1303,6 +1575,7 @@ namespace ForagersGamble
 
             return false;
         }
+
         private static bool IsFruitBaseCode(string fullCode)
         {
             if (string.IsNullOrWhiteSpace(fullCode)) return false;
@@ -1368,6 +1641,60 @@ namespace ForagersGamble
             if (unknownVegetables && IsVegetableBaseCode(fullCode)) return true;
             if (unknownGrains && IsGrainBaseCode(fullCode)) return true;
             if (unknownPlants && (IsNutBaseCode(fullCode) || IsLegumeBaseCode(fullCode))) return true;
+
+            return false;
+        }
+        
+        private static bool ShouldMaskIndexedFood(
+            FoodKnowledgeIndex.Entry meta,
+            bool unknownAll,
+            bool unknownPlants,
+            bool unknownMushrooms,
+            bool unknownFruits,
+            bool unknownVegetables,
+            bool unknownGrains)
+        {
+            if (unknownAll)
+                return true;
+
+            switch (meta.Category)
+            {
+                case UnknownNameCategory.Fruit:
+                    return unknownFruits || unknownPlants;
+
+                case UnknownNameCategory.Vegetable:
+                    return unknownVegetables || unknownPlants;
+
+                case UnknownNameCategory.Grain:
+                    return unknownGrains || unknownPlants;
+
+                case UnknownNameCategory.Mushroom:
+                    return unknownMushrooms;
+
+                case UnknownNameCategory.BerryBush:
+                case UnknownNameCategory.Crop:
+                case UnknownNameCategory.PlantGeneric:
+                    return unknownPlants;
+            }
+
+            switch (meta.Group)
+            {
+                case FoodKnowledgeIndex.KnowledgeGroup.Fruit:
+                    return unknownFruits || unknownPlants;
+
+                case FoodKnowledgeIndex.KnowledgeGroup.Vegetable:
+                    return unknownVegetables || unknownPlants;
+
+                case FoodKnowledgeIndex.KnowledgeGroup.Grain:
+                    return unknownGrains || unknownPlants;
+
+                case FoodKnowledgeIndex.KnowledgeGroup.NutOrLegume:
+                case FoodKnowledgeIndex.KnowledgeGroup.Plant:
+                    return unknownPlants;
+
+                case FoodKnowledgeIndex.KnowledgeGroup.Mushroom:
+                    return unknownMushrooms;
+            }
 
             return false;
         }

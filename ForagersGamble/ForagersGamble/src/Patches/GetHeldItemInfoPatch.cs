@@ -233,30 +233,80 @@ namespace ForagersGamble.Patches
                 dsc.Append(kept[i]);
             }
         }
-        public static void ScrubTooltipIfHidden(ItemSlot inSlot, StringBuilder dsc, IWorldAccessor world)
-        {
-            var agent = world.Side == EnumAppSide.Client ? (world as IClientWorldAccessor)?.Player?.Entity : null;
-            var stack = inSlot?.Itemstack;
-            if (agent == null || stack == null) return;
-            if (NameMaskingScope.IsActive) return;
 
-            var checkStack = GetKnowledgeCheckedStack(stack);
-            if (checkStack == null) return;
+        public static void ScrubTooltipIfHidden(
+            ItemSlot inSlot,
+            StringBuilder dsc,
+            IWorldAccessor world)
+        {
+            var agent = world.Side == EnumAppSide.Client
+                ? (world as IClientWorldAccessor)?.Player?.Entity
+                : null;
+
+            var stack = inSlot?.Itemstack;
+
+            if (agent == null || stack == null)
+                return;
+
+            if (NameMaskingScope.IsActive)
+                return;
+            if (stack.Collectible is BlockLiquidContainerBase blc)
+            {
+                var content = blc.GetContent(stack);
+
+                if (content != null)
+                {
+                    if (HideNutrition(agent, content))
+                    {
+                        RemoveLines(
+                            dsc,
+                            l => IsNutritionOrHydrationLine(l) ||
+                                 IsDietaryNoveltyLine(l)
+                        );
+                    }
+
+                    if (IsFood(content, world, agent) &&
+                        HideCrafting(agent, content))
+                    {
+                        RemoveLines(
+                            dsc,
+                            IsCraftingTransformLine
+                        );
+                    }
+                }
+
+                return;
+            }
+            var checkStack = stack;
 
             if (IsUnknownToPlayer(agent, checkStack))
             {
-                WhitelistUnknownTooltip(agent, checkStack, dsc, world);
+                WhitelistUnknownTooltip(
+                    agent,
+                    checkStack,
+                    dsc,
+                    world
+                );
+
                 return;
             }
 
             if (HideNutrition(agent, checkStack))
             {
-                RemoveLines(dsc, l => IsNutritionOrHydrationLine(l) || IsDietaryNoveltyLine(l));
+                RemoveLines(
+                    dsc,
+                    l => IsNutritionOrHydrationLine(l) ||
+                         IsDietaryNoveltyLine(l)
+                );
             }
 
-            if (IsFood(checkStack, world, agent) && HideCrafting(agent, checkStack))
+            if (IsFood(checkStack, world, agent) &&
+                HideCrafting(agent, checkStack))
             {
-                RemoveLines(dsc, IsCraftingTransformLine);
+                RemoveLines(
+                    dsc,
+                    IsCraftingTransformLine
+                );
             }
         }
 
@@ -367,53 +417,48 @@ namespace ForagersGamble.Patches
             int slash = li.LastIndexOf('/');
             return colon >= 0 && slash > colon;
         }
-        public static void ScrubPlacedBlockInfoIfHidden(Block block, IWorldAccessor world, BlockPos pos, IPlayer forPlayer, ref string info)
+        public static void ScrubPlacedBlockInfoIfHidden(
+            Block block,
+            IWorldAccessor world,
+            BlockPos pos,
+            IPlayer forPlayer,
+            ref string info)
         {
-            if (block == null || world == null || pos == null || forPlayer == null) return;
-            if (NameMaskingScope.IsActive) return;
-
-            var ep = forPlayer.Entity as EntityPlayer;
-            if (ep == null) return;
-
-            if (ep.Player?.WorldData?.CurrentGameMode != EnumGameMode.Survival) return;
-
-            var stack = new ItemStack(block);
-            if (Knowledge.IsKnown(ep, stack)) return;
-
-            string descLangCode = string.Concat(new string[]
+            if (block == null ||
+                world == null ||
+                pos == null ||
+                forPlayer == null)
             {
-                block.Code.Domain,
-                ":",
-                block.ItemClass.ToString().ToLowerInvariant(),
-                "desc-",
-                block.Code.Path
-            });
-
-            string desc = Lang.GetMatching(descLangCode, Array.Empty<object>());
-            if (string.IsNullOrEmpty(desc) || desc == descLangCode) return;
-
-            var descLines = desc.Replace("\r\n", "\n").Split('\n')
-                .Select(l => (l ?? "").Trim())
-                .Where(l => l.Length > 0)
-                .ToHashSet(StringComparer.InvariantCultureIgnoreCase);
-
-            if (descLines.Count == 0) return;
-
-            var lines = (info ?? "").Replace("\r\n", "\n").Split('\n').ToList();
-            var kept = new List<string>(lines.Count);
-
-            foreach (var raw in lines)
-            {
-                var l = (raw ?? "").TrimEnd();
-                if (l.Length == 0) { kept.Add(l); continue; }
-                if (descLines.Contains(l.Trim())) continue;
-                kept.Add(l);
+                return;
             }
 
-            while (kept.Count > 0 && string.IsNullOrWhiteSpace(kept[0])) kept.RemoveAt(0);
-            while (kept.Count > 0 && string.IsNullOrWhiteSpace(kept[kept.Count - 1])) kept.RemoveAt(kept.Count - 1);
+            if (NameMaskingScope.IsActive)
+                return;
 
-            info = string.Join("\n", kept).TrimEnd();
+            var ep = forPlayer.Entity as EntityPlayer;
+            if (ep == null)
+                return;
+
+            if (ep.Player?.WorldData?.CurrentGameMode != EnumGameMode.Survival)
+                return;
+
+            var cfg = ModConfig.Instance?.Main;
+            if (cfg == null)
+                return;
+
+            bool gatePlants =
+                cfg.UnknownAll == true ||
+                cfg.UnknownPlants == true;
+
+            if (!gatePlants)
+                return;
+            if (!PlantKnowledgeUtil.IsKnowledgeGatedPlant(block, world.Api))
+                return;
+
+            var stack = new ItemStack(block);
+            if (Knowledge.IsKnown(ep, stack))
+                return;
+            info = "";
         }
     }
 

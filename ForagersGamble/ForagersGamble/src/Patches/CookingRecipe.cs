@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Text;
 using ForagersGamble;
 using ForagersGamble.Config;
@@ -119,9 +118,25 @@ public static class Patch_CookingRecipe_GetOutputName
         }
     }
 
-    private static int ComputeConfigSig(object cfg)
+    private static int ComputeConfigSig(
+        ForagersGamble.Config.SubConfigs.MainConfig cfg)
     {
-        return cfg?.GetHashCode() ?? 0;
+        if (cfg == null)
+            return 0;
+
+        unchecked
+        {
+            int h = 17;
+
+            h = h * 31 + (cfg.UnknownAll ? 1 : 0);
+            h = h * 31 + (cfg.UnknownPlants ? 1 : 0);
+            h = h * 31 + (cfg.UnknownMushrooms ? 1 : 0);
+            h = h * 31 + (cfg.UnknownFruits ? 1 : 0);
+            h = h * 31 + (cfg.UnknownVegetables ? 1 : 0);
+            h = h * 31 + (cfg.UnknownGrains ? 1 : 0);
+
+            return h;
+        }
     }
 
     private static string BuildInputsSignature(ItemStack[] inputStacks)
@@ -142,57 +157,6 @@ public static class Patch_CookingRecipe_GetOutputName
         }
 
         return sb.ToString();
-    }
-    private static readonly string[] RevisionMemberNames =
-    {
-        "Revision", "Version", "ChangeCounter", "Changes", "DirtyCounter", "UpdateCounter", "Counter"
-    };
-
-    private static bool TryGetKnowledgeRevision(object idx, out int revision)
-    {
-        revision = 0;
-        if (idx == null) return false;
-
-        var t = idx.GetType();
-        for (int i = 0; i < RevisionMemberNames.Length; i++)
-        {
-            var name = RevisionMemberNames[i];
-            var p = t.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (p != null && p.CanRead)
-            {
-                var pt = p.PropertyType;
-                if (pt == typeof(int))
-                {
-                    revision = (int)p.GetValue(idx);
-                    return true;
-                }
-                if (pt == typeof(long))
-                {
-                    revision = unchecked((int)(long)p.GetValue(idx));
-                    return true;
-                }
-            }
-        }
-        for (int i = 0; i < RevisionMemberNames.Length; i++)
-        {
-            var name = RevisionMemberNames[i];
-            var f = t.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (f != null)
-            {
-                var ft = f.FieldType;
-                if (ft == typeof(int))
-                {
-                    revision = (int)f.GetValue(idx);
-                    return true;
-                }
-                if (ft == typeof(long))
-                {
-                    revision = unchecked((int)(long)f.GetValue(idx));
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
@@ -253,10 +217,11 @@ public static class Patch_CookingRecipe_GetOutputName
         if (api == null) return;
 
         var cfg = ModConfig.Instance.Main;
-        var idx = PlantKnowledgeIndex.Get(api);
 
-        bool canCache = TryGetKnowledgeRevision(idx, out int knowledgeRev);
+        int knowledgeRev = Knowledge.GetRevision(agent);
         int configSig = ComputeConfigSig(cfg);
+
+        const bool canCache = true;
 
         CacheKey cacheKey = default;
 
@@ -287,7 +252,12 @@ public static class Patch_CookingRecipe_GetOutputName
             var stack = inputStacks[i];
             if (stack == null || stack.StackSize <= 0 || stack.Collectible == null) continue;
 
-            var masked = IngredientMasking.MaskedIngredientLabel(api, agent, stack, cfg, idx);
+            var masked = IngredientMasking.MaskedIngredientLabel(
+                api,
+                agent,
+                stack,
+                cfg
+            );
             if (string.IsNullOrWhiteSpace(masked)) continue;
 
             var dom = stack.Collectible.Code?.Domain ?? "game";
@@ -333,7 +303,7 @@ public static class Patch_CookingRecipe_GetOutputName
                     if (!string.IsNullOrWhiteSpace(match)) tokensToMask[match] = masked;
                 }
             }
-            var plain = stack.GetName();
+            var plain = IngredientMasking.GetUnmaskedName(stack);
             if (!string.IsNullOrWhiteSpace(plain))
             {
                 tokensToMask[plain] = masked;

@@ -152,6 +152,49 @@ public static class PlantKnowledgeUtil
 
         return false;
     }
+    
+    private static bool TryResolveDirectProduceDerivative(
+        ICoreAPI api,
+        string codePath,
+        out ItemStack baseProduce,
+        string preferredDomain = null)
+    {
+        baseProduce = null;
+        if (string.IsNullOrWhiteSpace(codePath)) return false;
+        (string derivativePrefix, string basePrefix)[] mappings =
+        {
+            ("dryfruit-", "fruit-"),
+            ("candiedfruit-", "fruit-"),
+            ("dehydratedfruit-", "fruit-"),
+            ("driedfruit-", "fruit-"),
+            ("gelatin-", "fruit-")
+        };
+
+        foreach (var (derivativePrefix, basePrefix) in mappings)
+        {
+            if (!codePath.StartsWith(derivativePrefix, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var token = codePath
+                .Substring(derivativePrefix.Length)
+                .Trim('-', '_', '.');
+
+            token = NormalizeProduceToken(token);
+
+            if (string.IsNullOrWhiteSpace(token))
+                return false;
+
+            return TryMakeBase(
+                api,
+                basePrefix,
+                token,
+                out baseProduce,
+                preferredDomain
+            );
+        }
+
+        return false;
+    }
 
     public static bool TryResolveBaseProduceFromItem(ICoreAPI api, ItemStack stack, out ItemStack baseProduce)
     {
@@ -173,6 +216,15 @@ public static class PlantKnowledgeUtil
             codePath.Equals("fermentedcocoa", StringComparison.OrdinalIgnoreCase))
         {
             return TryMakeBase(api, "fruit-", "cocoa", out baseProduce, preferredDomain);
+        }
+        
+        if (TryResolveDirectProduceDerivative(
+                api,
+                codePath,
+                out baseProduce,
+                preferredDomain))
+        {
+            return true;
         }
 
         if (stack.Block is BlockSapling)
@@ -330,6 +382,57 @@ public static class PlantKnowledgeUtil
 
         return false;
     }
+    
+    private static bool TryExtractFruitingBushFruitToken(
+        string path,
+        out string fruitToken)
+    {
+        fruitToken = null;
+        if (string.IsNullOrWhiteSpace(path)) return false;
+
+        const string bushPrefix = "fruitingbush-";
+        const string cuttingPrefix = "fruitingbushcutting-";
+
+        string rest;
+        bool isBush;
+
+        if (path.StartsWith(bushPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            rest = path.Substring(bushPrefix.Length);
+            isBush = true;
+        }
+        else if (path.StartsWith(cuttingPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            rest = path.Substring(cuttingPrefix.Length);
+            isBush = false;
+        }
+        else
+        {
+            return false;
+        }
+
+        var segs = rest.Split(
+            '-',
+            StringSplitOptions.RemoveEmptyEntries
+        );
+
+        int start = isBush ? 1 : 0;
+        int endExclusive = segs.Length - 1;
+
+        if (endExclusive <= start)
+            return false;
+
+        fruitToken = string.Join(
+            "-",
+            segs,
+            start,
+            endExclusive - start
+        );
+
+        fruitToken = NormalizeProduceToken(fruitToken);
+
+        return !string.IsNullOrWhiteSpace(fruitToken);
+    }
 
     private static bool TryGuessFruitFromCode(ICoreAPI api, Block block, out ItemStack stack)
     {
@@ -337,6 +440,19 @@ public static class PlantKnowledgeUtil
         if (api?.World == null || block?.Code == null) return false;
 
         var path = block.Code.Path ?? "";
+        if (TryExtractFruitingBushFruitToken(path, out var bushFruit))
+        {
+            if (TryMakeBase(
+                    api,
+                    "fruit-",
+                    bushFruit,
+                    out stack,
+                    block.Code.Domain))
+            {
+                return true;
+            }
+        }
+
         var tokens = path.Split('-');
         var candidates = new List<string>();
 
@@ -765,28 +881,58 @@ public static class PlantKnowledgeUtil
         return false;
     }
 
-    private static bool TryMakeBase(ICoreAPI api, string familyPrefix, string token, out ItemStack stack, string preferredDomain = null)
+    private static bool TryMakeBase(
+        ICoreAPI api,
+        string familyPrefix,
+        string token,
+        out ItemStack stack,
+        string preferredDomain = null)
     {
         stack = null;
-        if (api?.World == null || string.IsNullOrWhiteSpace(familyPrefix) || string.IsNullOrWhiteSpace(token))
+
+        if (api?.World == null ||
+            string.IsNullOrWhiteSpace(familyPrefix) ||
+            string.IsNullOrWhiteSpace(token))
+        {
             return false;
+        }
+
+        string wantedPath = familyPrefix + token;
 
         var domains = new List<string> { "game" };
+
         if (!string.IsNullOrWhiteSpace(preferredDomain) &&
-            !preferredDomain.Equals("game", StringComparison.OrdinalIgnoreCase))
+            !preferredDomain.Equals(
+                "game",
+                StringComparison.OrdinalIgnoreCase))
         {
             domains.Add(preferredDomain);
         }
 
         foreach (var dom in domains)
         {
-            var al = new AssetLocation(dom, familyPrefix + token);
+            var al = new AssetLocation(dom, wantedPath);
 
             var it = api.World.GetItem(al);
+
             if (it != null)
             {
                 var test = new ItemStack(it);
-                var p = it.GetNutritionProperties(api.World, test, null);
+
+                FoodNutritionProperties p = null;
+
+                try
+                {
+                    p = it.GetNutritionProperties(
+                        api.World,
+                        test,
+                        null
+                    );
+                }
+                catch
+                {
+                }
+
                 if (IsEdible(p))
                 {
                     stack = test;
@@ -795,10 +941,25 @@ public static class PlantKnowledgeUtil
             }
 
             var bl = api.World.GetBlock(al);
+
             if (bl != null)
             {
                 var test = new ItemStack(bl);
-                var p = bl.GetNutritionProperties(api.World, test, null);
+
+                FoodNutritionProperties p = null;
+
+                try
+                {
+                    p = bl.GetNutritionProperties(
+                        api.World,
+                        test,
+                        null
+                    );
+                }
+                catch
+                {
+                }
+
                 if (IsEdible(p))
                 {
                     stack = test;
@@ -806,32 +967,133 @@ public static class PlantKnowledgeUtil
                 }
             }
         }
+        
+        foreach (var it in api.World.Items)
+        {
+            if (it?.Code?.Path == null)
+                continue;
+
+            if (!it.Code.Path.Equals(
+                    wantedPath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var test = new ItemStack(it);
+
+            FoodNutritionProperties p = null;
+
+            try
+            {
+                p = it.GetNutritionProperties(
+                    api.World,
+                    test,
+                    null
+                );
+            }
+            catch
+            {
+            }
+
+            if (!IsEdible(p))
+                continue;
+
+            stack = test;
+            return true;
+        }
+
+        foreach (var bl in api.World.Blocks)
+        {
+            if (bl?.Code?.Path == null)
+                continue;
+
+            if (!bl.Code.Path.Equals(
+                    wantedPath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var test = new ItemStack(bl);
+
+            FoodNutritionProperties p = null;
+
+            try
+            {
+                p = bl.GetNutritionProperties(
+                    api.World,
+                    test,
+                    null
+                );
+            }
+            catch
+            {
+            }
+
+            if (!IsEdible(p))
+                continue;
+
+            stack = test;
+            return true;
+        }
 
         return false;
     }
 
     public static string ClassifyUnknownKey(Block block)
     {
-        if (block is BlockBerryBush) return "foragersgamble:unknown-berrybush";
-        if (block is BlockCrop) return "foragersgamble:unknown-crop";
-        if (block is BlockPlant) return "foragersgamble:unknown-plant";
-        if (block is BlockFruitTreeBranch || block is BlockFruitTreeFoliage) return "foragersgamble:unknown-fruittree";
-
         var path = block.Code?.Path ?? "";
         var tname = block.GetType().Name;
-        if (path.StartsWith("clipping-", StringComparison.OrdinalIgnoreCase) ||
-            tname.Contains("Clipping", StringComparison.OrdinalIgnoreCase))
+        if (path.StartsWith("fruitingbush-", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("fruitingbushcutting-", StringComparison.OrdinalIgnoreCase))
+        {
             return "foragersgamble:unknown-berrybush";
-        if (tname.Contains("BerryBush", StringComparison.OrdinalIgnoreCase)) return "foragersgamble:unknown-berrybush";
+        }
+        if (path.StartsWith("clipping-", StringComparison.OrdinalIgnoreCase) ||
+            tname.Contains("Clipping", StringComparison.OrdinalIgnoreCase) ||
+            tname.Contains("FruitingBushCutting", StringComparison.OrdinalIgnoreCase))
+        {
+            return "foragersgamble:unknown-berrybush";
+        }
+
+        if (block is BlockBerryBush)
+            return "foragersgamble:unknown-berrybush";
+
+        if (block is BlockCrop)
+            return "foragersgamble:unknown-crop";
+
+        if (block is BlockPlant)
+            return "foragersgamble:unknown-plant";
+
+        if (block is BlockFruitTreeBranch ||
+            block is BlockFruitTreeFoliage)
+        {
+            return "foragersgamble:unknown-fruittree";
+        }
+
+        if (tname.Contains("BerryBush", StringComparison.OrdinalIgnoreCase))
+            return "foragersgamble:unknown-berrybush";
+
         if (tname.Contains("FruitingVine", StringComparison.OrdinalIgnoreCase) ||
             tname.Contains("FruitingVines", StringComparison.OrdinalIgnoreCase))
+        {
             return "foragersgamble:unknown-berrybush";
-        if (tname.Contains("Herb", StringComparison.OrdinalIgnoreCase)) return "foragersgamble:unknown-herb";
-        if (tname.Contains("Plant", StringComparison.OrdinalIgnoreCase)) return "foragersgamble:unknown-plant";
+        }
+
+        if (tname.Contains("Herb", StringComparison.OrdinalIgnoreCase))
+            return "foragersgamble:unknown-herb";
+
+        if (tname.Contains("Plant", StringComparison.OrdinalIgnoreCase))
+            return "foragersgamble:unknown-plant";
+
         if (tname.Contains("Tree", StringComparison.OrdinalIgnoreCase) ||
             tname.Contains("Foliage", StringComparison.OrdinalIgnoreCase) ||
             tname.Contains("Branch", StringComparison.OrdinalIgnoreCase))
+        {
             return "foragersgamble:unknown-fruittree";
+        }
+
         return "foragersgamble:unknown-plant";
     }
 
@@ -841,7 +1103,11 @@ public static class PlantKnowledgeUtil
 
         var tn = block.GetType().Name;
         var path = block.Code?.Path ?? "";
+        bool looksLikeFruitingBush =
+            path.StartsWith("fruitingbush-", StringComparison.OrdinalIgnoreCase);
 
+        bool looksLikeFruitingBushCutting =
+            path.StartsWith("fruitingbushcutting-", StringComparison.OrdinalIgnoreCase);
         if (tn.Contains("Coral", StringComparison.OrdinalIgnoreCase)) return false;
         if (tn.Contains("Kelp", StringComparison.OrdinalIgnoreCase)) return false;
         if (tn.Contains("Seaweed", StringComparison.OrdinalIgnoreCase)) return false;
@@ -855,7 +1121,9 @@ public static class PlantKnowledgeUtil
 
         bool looksLikeClipping =
             path.StartsWith("clipping-", StringComparison.OrdinalIgnoreCase) ||
-            tn.Contains("Clipping", StringComparison.OrdinalIgnoreCase);
+            looksLikeFruitingBushCutting ||
+            tn.Contains("Clipping", StringComparison.OrdinalIgnoreCase) ||
+            tn.Contains("FruitingBushCutting", StringComparison.OrdinalIgnoreCase);
 
         if (looksLikeClipping)
         {
@@ -863,6 +1131,21 @@ public static class PlantKnowledgeUtil
             {
                 if (TryResolveBushFromClipping(api, block, out _)) return true;
                 if (TryResolveReferenceFruit(api, block, new ItemStack(block), out _)) return true;
+                return false;
+            }
+
+            return true;
+        }
+        
+        if (looksLikeFruitingBush)
+        {
+            if (api != null &&
+                !TryResolveReferenceFruit(
+                    api,
+                    block,
+                    new ItemStack(block),
+                    out _))
+            {
                 return false;
             }
 
@@ -947,29 +1230,143 @@ public static class PlantKnowledgeUtil
     public static bool IsClipping(CollectibleObject coll)
     {
         if (coll?.Code?.Path == null) return false;
+
         var path = coll.Code.Path;
         var tname = coll.GetType().Name;
+
         return path.StartsWith("clipping-", StringComparison.OrdinalIgnoreCase)
-               || tname.Contains("Clipping", StringComparison.OrdinalIgnoreCase);
+               || path.StartsWith("fruitingbushcutting-", StringComparison.OrdinalIgnoreCase)
+               || tname.Contains("Clipping", StringComparison.OrdinalIgnoreCase)
+               || tname.Contains("FruitingBushCutting", StringComparison.OrdinalIgnoreCase);
     }
 
-    public static bool TryResolveBushFromClipping(ICoreAPI api, CollectibleObject clipping, out Block bushBlock)
+    public static bool TryResolveBushFromClipping(
+        ICoreAPI api,
+        CollectibleObject clipping,
+        out Block bushBlock)
     {
         bushBlock = null;
-        if (api?.World == null || clipping == null || !IsClipping(clipping)) return false;
 
-        var bushCodeStr = clipping.Attributes?["bushCode"]?.AsString(null);
-        if (string.IsNullOrWhiteSpace(bushCodeStr)) return false;
-
-        var al = new AssetLocation(bushCodeStr.Trim());
-        bushBlock = api.World.GetBlock(al);
-        if (bushBlock != null) return true;
-
-        if (string.IsNullOrEmpty(al.Domain) || al.Domain.Equals("game", StringComparison.OrdinalIgnoreCase))
+        if (api?.World == null ||
+            clipping?.Code == null ||
+            !IsClipping(clipping))
         {
-            var al2 = new AssetLocation(clipping.Code.Domain, al.Path);
-            bushBlock = api.World.GetBlock(al2);
-            if (bushBlock != null) return true;
+            return false;
+        }
+        var bushCodeStr = clipping.Attributes?["bushCode"]?.AsString(null);
+
+        if (!string.IsNullOrWhiteSpace(bushCodeStr))
+        {
+            var al = new AssetLocation(bushCodeStr.Trim());
+
+            bushBlock = api.World.GetBlock(al);
+            if (bushBlock != null)
+                return true;
+
+            if (string.IsNullOrEmpty(al.Domain) ||
+                al.Domain.Equals("game", StringComparison.OrdinalIgnoreCase))
+            {
+                var al2 = new AssetLocation(
+                    clipping.Code.Domain ?? "game",
+                    al.Path
+                );
+
+                bushBlock = api.World.GetBlock(al2);
+
+                if (bushBlock != null)
+                    return true;
+            }
+        }
+        var path = clipping.Code.Path ?? "";
+
+        if (!path.StartsWith(
+                "fruitingbushcutting-",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var rest = path
+            .Substring("fruitingbushcutting-".Length)
+            .Trim('-', '_', '.');
+
+        var segs = rest.Split(
+            '-',
+            StringSplitOptions.RemoveEmptyEntries
+        );
+
+        if (segs.Length < 2)
+            return false;
+        var type = segs[^1];
+        var fruitType = string.Join(
+            "-",
+            segs,
+            0,
+            segs.Length - 1
+        );
+
+        if (string.IsNullOrWhiteSpace(fruitType))
+            return false;
+
+        var wantedEnding = "-" + fruitType + "-" + type;
+        var preferredDomain = clipping.Code.Domain ?? "game";
+        foreach (var bl in api.World.Blocks)
+        {
+            if (bl?.Code?.Path == null)
+                continue;
+
+            if (!bl.Code.Domain.Equals(
+                    preferredDomain,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var bp = bl.Code.Path;
+
+            if (!bp.StartsWith(
+                    "fruitingbush-",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!bp.EndsWith(
+                    wantedEnding,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            bushBlock = bl;
+            return true;
+        }
+        var fruitMarker = "-" + fruitType + "-";
+
+        foreach (var bl in api.World.Blocks)
+        {
+            if (bl?.Code?.Path == null)
+                continue;
+
+            if (!bl.Code.Domain.Equals(
+                    preferredDomain,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var bp = bl.Code.Path;
+
+            if (bp.StartsWith(
+                    "fruitingbush-",
+                    StringComparison.OrdinalIgnoreCase)
+                && bp.IndexOf(
+                    fruitMarker,
+                    StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                bushBlock = bl;
+                return true;
+            }
         }
 
         return false;

@@ -26,7 +26,6 @@ public class ForagersGambleModSystem : ModSystem
 		if (!Harmony.HasAnyPatches(HarmonyID))
 		{
 			harmony = new Harmony(HarmonyID);
-			ACACompat.TryApplyHarmony(api, harmony);
 			harmony.PatchAllUncategorized();
 		}
 	}
@@ -40,9 +39,13 @@ public class ForagersGambleModSystem : ModSystem
 	public override void AssetsFinalize(ICoreAPI api)
 	{
 		base.AssetsFinalize(api);
-		var idx = PlantKnowledgeIndex.Build(api);
-		PlantKnowledgeIndex.Put(api, idx);
-		Knowledge.BuildUnknownUniverse(api, idx);
+		var plantIdx = PlantKnowledgeIndex.Build(api);
+		PlantKnowledgeIndex.Put(api, plantIdx);
+
+		var foodIdx = FoodKnowledgeIndex.Build(api, plantIdx);
+		FoodKnowledgeIndex.Put(api, foodIdx);
+
+		Knowledge.BuildUnknownUniverse(api, plantIdx);
 		if (api.Side == EnumAppSide.Client) return;
 
 		if (Config.ModConfig.Instance.Main.PoisonOnset)

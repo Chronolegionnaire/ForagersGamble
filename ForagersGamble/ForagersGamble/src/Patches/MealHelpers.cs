@@ -6,62 +6,109 @@ namespace ForagersGamble.Patches;
 
 static class IngredientMasking
 {
-    static bool IsEdible(FoodNutritionProperties p) =>
-        p != null && p.FoodCategory != EnumFoodCategory.Unknown && p.FoodCategory != EnumFoodCategory.NoNutrition;
+    public static string GetUnmaskedName(ItemStack stack)
+    {
+        if (stack == null)
+            return "";
+
+        using (NameMaskingScope.Push())
+        {
+            return stack.GetName();
+        }
+    }
 
     public static string MaskedIngredientLabel(
         ICoreAPI api,
         EntityPlayer agent,
         ItemStack stack,
-        MainConfig cfg,
-        PlantKnowledgeIndex idx
-    )
+        MainConfig cfg)
     {
-        if (api?.World == null || agent == null || stack?.Collectible == null || cfg == null)
-            return stack?.GetName() ?? "";
-
-        var props = stack.Collectible.GetNutritionProperties(api.World, stack, agent);
-        var edible = IsEdible(props);
-        if (!edible) return stack.GetName();
-        if (cfg.UnknownAll == true)
+        if (api?.World == null ||
+            agent == null ||
+            stack?.Collectible == null ||
+            cfg == null)
         {
-            if (!Knowledge.IsKnown(agent, Knowledge.ItemKey(stack)))
-                return CategoryPlaceholder(props.FoodCategory);
+            return GetUnmaskedName(stack);
+        }
 
-            if (PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var baseProduce) && baseProduce != null)
+        var idx = FoodKnowledgeIndex.Get(api);
+        if (idx == null ||
+            !idx.TryGet(stack, out var meta) ||
+            !meta.IsEdible)
+        {
+            return GetUnmaskedName(stack);
+        }
+
+        bool gated = cfg.UnknownAll == true;
+
+        if (!gated)
+        {
+            gated = meta.Group switch
             {
-                if (!Knowledge.IsKnown(agent, Knowledge.ItemKey(baseProduce)))
-                    return CategoryPlaceholder(props.FoodCategory);
-            }
-            return stack.GetName();
-        }
-        bool gatePlants = cfg.UnknownPlants;
-        bool gateMushrooms = cfg.UnknownMushrooms;
-        if (gatePlants && PlantKnowledgeUtil.TryResolveBaseProduceFromItem(api, stack, out var baseProd) && baseProd != null)
-        {
-            var baseProps = baseProd.Collectible.GetNutritionProperties(api.World, baseProd, agent);
-            if (IsEdible(baseProps) && !Knowledge.IsKnown(agent, Knowledge.ItemKey(baseProd)))
-                return CategoryPlaceholder(baseProps.FoodCategory);
-        }
-        if (gateMushrooms && idx != null)
-        {
-            var key = Knowledge.ItemKey(stack);
-            if (!string.IsNullOrEmpty(key) && idx.IsMushroom(key) && !Knowledge.IsKnown(agent, key))
-                return Lang.Get("foragersgamble:unknown-mushroom");
-        }
-        if (gatePlants && !Knowledge.IsKnown(agent, Knowledge.ItemKey(stack)))
-            return CategoryPlaceholder(props.FoodCategory);
+                FoodKnowledgeIndex.KnowledgeGroup.Fruit =>
+                    cfg.UnknownFruits || cfg.UnknownPlants,
 
-        return stack.GetName();
+                FoodKnowledgeIndex.KnowledgeGroup.Vegetable =>
+                    cfg.UnknownVegetables || cfg.UnknownPlants,
+
+                FoodKnowledgeIndex.KnowledgeGroup.Grain =>
+                    cfg.UnknownGrains || cfg.UnknownPlants,
+
+                FoodKnowledgeIndex.KnowledgeGroup.NutOrLegume =>
+                    cfg.UnknownPlants,
+
+                FoodKnowledgeIndex.KnowledgeGroup.Mushroom =>
+                    cfg.UnknownMushrooms,
+
+                FoodKnowledgeIndex.KnowledgeGroup.Plant =>
+                    cfg.UnknownPlants,
+
+                _ => false
+            };
+        }
+
+        if (!gated)
+            return GetUnmaskedName(stack);
+        if (Knowledge.IsKnown(agent, meta.ParentCode))
+            return GetUnmaskedName(stack);
+
+        return CategoryPlaceholder(meta.Category);
     }
 
-    static string CategoryPlaceholder(EnumFoodCategory cat) => cat switch
+    private static string CategoryPlaceholder(
+        Knowledge.UnknownNameCategory category)
     {
-        EnumFoodCategory.Fruit     => Lang.Get("foragersgamble:unknown-fruit"),
-        EnumFoodCategory.Vegetable => Lang.Get("foragersgamble:unknown-vegetable"),
-        EnumFoodCategory.Grain     => Lang.Get("foragersgamble:unknown-grain"),
-        EnumFoodCategory.Protein   => Lang.Get("foragersgamble:unknown-protein"),
-        EnumFoodCategory.Dairy     => Lang.Get("foragersgamble:unknown-dairy"),
-        _                          => Lang.Get("foragersgamble:unknown-food")
-    };
+        return category switch
+        {
+            Knowledge.UnknownNameCategory.Mushroom =>
+                Lang.Get("foragersgamble:unknown-mushroom"),
+
+            Knowledge.UnknownNameCategory.BerryBush =>
+                Lang.Get("foragersgamble:unknown-berrybush"),
+
+            Knowledge.UnknownNameCategory.Crop =>
+                Lang.Get("foragersgamble:unknown-crop"),
+
+            Knowledge.UnknownNameCategory.PlantGeneric =>
+                Lang.Get("foragersgamble:unknown-plant"),
+
+            Knowledge.UnknownNameCategory.Fruit =>
+                Lang.Get("foragersgamble:unknown-fruit"),
+
+            Knowledge.UnknownNameCategory.Vegetable =>
+                Lang.Get("foragersgamble:unknown-vegetable"),
+
+            Knowledge.UnknownNameCategory.Grain =>
+                Lang.Get("foragersgamble:unknown-grain"),
+
+            Knowledge.UnknownNameCategory.Protein =>
+                Lang.Get("foragersgamble:unknown-protein"),
+
+            Knowledge.UnknownNameCategory.Dairy =>
+                Lang.Get("foragersgamble:unknown-dairy"),
+
+            _ =>
+                Lang.Get("foragersgamble:unknown-food")
+        };
+    }
 }
